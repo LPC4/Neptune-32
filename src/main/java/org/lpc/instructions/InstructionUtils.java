@@ -1,4 +1,4 @@
-package org.lpc.util;
+package org.lpc.instructions;
 
 public final class InstructionUtils {
     private InstructionUtils() {} // prevent instantiation

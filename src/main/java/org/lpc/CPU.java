@@ -1,8 +1,9 @@
-package org.lpc.cpu;
+package org.lpc;
 
 import lombok.Getter;
 import org.lpc.instructions.Instruction;
 import org.lpc.instructions.InstructionSet;
+import org.lpc.instructions.InstructionUtils;
 import org.lpc.memory.Flags;
 import org.lpc.memory.MemoryBus;
 import org.lpc.memory.MemoryMap;
@@ -107,6 +108,7 @@ public class CPU {
             words[i] = fetchWord();
         }
         instr.execute(this, words);
+        System.out.println(instructionSet.getName(InstructionUtils.extractOpcode(firstWord)));
     }
 
     // -------- Safety Check --------

@@ -1,0 +1,16 @@
+<component name="InspectionProjectProfileManager">
+  <profile version="1.0">
+    <option name="myName" value="Project Default" />
+    <inspection_tool class="ClassCanBeRecord" enabled="true" level="WEAK WARNING" enabled_by_default="true">
+      <option name="myIgnoredAnnotations">
+        <list>
+          <option value="io.micronaut.*" />
+          <option value="jakarta.*" />
+          <option value="javax.*" />
+          <option value="lombok.Getter" />
+          <option value="org.springframework.*" />
+        </list>
+      </option>
+    </inspection_tool>
+  </profile>
+</component>

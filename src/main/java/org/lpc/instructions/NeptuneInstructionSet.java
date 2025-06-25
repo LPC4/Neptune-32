@@ -1,214 +1,271 @@
 package org.lpc.instructions;
 
-import org.lpc.util.InstructionUtils;
+import org.lpc.CPU;
 
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
+import java.util.function.BiFunction;
+import java.util.function.Predicate;
 
-public class InstructionSet {
-    public static final byte ADD = 1;
-    public static final byte SUB = 2;
-    public static final byte LOAD_IMMEDIATE = 3;
-    public static final byte JMP = 4;
-    public static final byte MUL = 5;
-    public static final byte DIV = 6;
-    public static final byte MOD = 7;
-    public static final byte AND = 8;
-    public static final byte OR  = 9;
-    public static final byte XOR = 10;
-    public static final byte NOT = 11;
-    public static final byte SHL = 12;
-    public static final byte SHR = 13;
-    public static final byte LOAD = 14;
-    public static final byte STORE = 15;
-    public static final byte JZ = 16;
-    public static final byte JNZ = 17;
-    public static final byte PUSH = 18;
-    public static final byte POP = 19;
-    public static final byte CMP = 20;
-
+public class NeptuneInstructionSet implements InstructionSet {
     private final Map<Byte, Instruction> instructionMap = new HashMap<>();
+    private final Map<String, Byte> nameToOpcode = new HashMap<>();
+    private final Map<Byte, String> opcodeToName = new HashMap<>();
+    private byte nextOpcode = 1;
 
-    public InstructionSet() {
-        // Arithmetic
-        register(ADD, (cpu, word) -> {
-            int rDest = InstructionUtils.extractRegister(word, 16);
-            int rSrc = InstructionUtils.extractRegister(word, 8);
-            int a = cpu.getRegister(rDest);
-            int b = cpu.getRegister(rSrc);
-            int result = a + b;
-            cpu.setRegister(rDest, result);
-            cpu.getFlags().updateAdd(a, b, result);
-        });
+    public NeptuneInstructionSet() {
+        registerOpcodes();
+        logInstructions();
+    }
 
-        register(SUB, (cpu, word) -> {
-            int rDest = InstructionUtils.extractRegister(word, 16);
-            int rSrc = InstructionUtils.extractRegister(word, 8);
-            int a = cpu.getRegister(rDest);
-            int b = cpu.getRegister(rSrc);
-            int result = a - b;
-            cpu.setRegister(rDest, result);
-            cpu.getFlags().updateSub(a, b, result);
-        });
+    private void registerOpcodes() {
+        registerBinaryOp("ADD", Integer::sum, true);
+        registerBinaryOp("SUB", (a, b) -> a - b, true);
+        registerBinaryOp("MUL", (a, b) -> a * b, false);
+        registerBinaryOp("DIV", (a, b) -> {
+            if (b == 0) throw new ArithmeticException("Division by zero");
+            return a / b;
+        }, false);
+        registerBinaryOp("MOD", (a, b) -> {
+            if (b == 0) throw new ArithmeticException("Modulo by zero");
+            return a % b;
+        }, false);
+        registerBinaryOp("AND", (a, b) -> a & b, false);
+        registerBinaryOp("OR", (a, b) -> a | b, false);
+        registerBinaryOp("XOR", (a, b) -> a ^ b, false);
 
-        register(MUL, (cpu, word) -> {
-            int rDest = InstructionUtils.extractRegister(word, 16);
-            int rSrc = InstructionUtils.extractRegister(word, 8);
-            int result = cpu.getRegister(rDest) * cpu.getRegister(rSrc);
-            cpu.setRegister(rDest, result);
-            cpu.getFlags().update(result);
-        });
-
-        register(DIV, (cpu, word) -> {
-            int rDest = InstructionUtils.extractRegister(word, 16);
-            int rSrc = InstructionUtils.extractRegister(word, 8);
-            int divisor = cpu.getRegister(rSrc);
-            if (divisor != 0) {
-                int result = cpu.getRegister(rDest) / divisor;
+        register("NOT", new Instruction() {
+            public void execute(CPU cpu, int[] words) {
+                int rDest = InstructionUtils.extractRegister(words[0], 16);
+                int result = ~cpu.getRegister(rDest);
                 cpu.setRegister(rDest, result);
                 cpu.getFlags().update(result);
-            } else {
-                throw new ArithmeticException("Division by zero");
+            }
+
+            public int[] encode(String args) {
+                int rDest = parseRegister(args.trim());
+                return new int[]{encodeInstruction(rDest, 0, getOpcode("NOT"))};
             }
         });
 
-        register(MOD, (cpu, word) -> {
-            int rDest = InstructionUtils.extractRegister(word, 16);
-            int rSrc = InstructionUtils.extractRegister(word, 8);
-            int divisor = cpu.getRegister(rSrc);
-            if (divisor != 0) {
-                int result = cpu.getRegister(rDest) % divisor;
-                cpu.setRegister(rDest, result);
-                cpu.getFlags().update(result);
-            } else {
-                throw new ArithmeticException("Modulo by zero");
+        register("SHL", createShiftInstruction("SHL", (a, s) -> a << s));
+        register("SHR", createShiftInstruction("SHR", (a, s) -> a >>> s));
+
+        register("LOAD", createMemoryInstruction("LOAD", true));
+        register("STORE", createMemoryInstruction("STORE", false));
+
+        register("JMP", createJumpInstruction("JMP", cpu -> true));
+        register("JZ", createJumpInstruction("JZ", cpu -> cpu.getFlags().isZero()));
+        register("JNZ", createJumpInstruction("JNZ", cpu -> !cpu.getFlags().isZero()));
+
+        register("PUSH", new Instruction() {
+            public void execute(CPU cpu, int[] words) {
+                int rSrc = InstructionUtils.extractRegister(words[0], 16);
+                cpu.push(cpu.getRegister(rSrc));
+            }
+
+            public int[] encode(String args) {
+                int rSrc = parseRegister(args.trim());
+                return new int[]{encodeInstruction(rSrc, 0, getOpcode("PUSH"))};
             }
         });
 
-        // Bitwise
-        register(AND, (cpu, word) -> {
-            int rDest = InstructionUtils.extractRegister(word, 16);
-            int rSrc = InstructionUtils.extractRegister(word, 8);
-            int result = cpu.getRegister(rDest) & cpu.getRegister(rSrc);
-            cpu.setRegister(rDest, result);
-            cpu.getFlags().update(result);
-        });
+        register("POP", new Instruction() {
+            public void execute(CPU cpu, int[] words) {
+                int rDest = InstructionUtils.extractRegister(words[0], 16);
+                int val = cpu.pop();
+                cpu.setRegister(rDest, val);
+                cpu.getFlags().update(val);
+            }
 
-        register(OR, (cpu, word) -> {
-            int rDest = InstructionUtils.extractRegister(word, 16);
-            int rSrc = InstructionUtils.extractRegister(word, 8);
-            int result = cpu.getRegister(rDest) | cpu.getRegister(rSrc);
-            cpu.setRegister(rDest, result);
-            cpu.getFlags().update(result);
-        });
-
-        register(XOR, (cpu, word) -> {
-            int rDest = InstructionUtils.extractRegister(word, 16);
-            int rSrc = InstructionUtils.extractRegister(word, 8);
-            int result = cpu.getRegister(rDest) ^ cpu.getRegister(rSrc);
-            cpu.setRegister(rDest, result);
-            cpu.getFlags().update(result);
-        });
-
-        register(NOT, (cpu, word) -> {
-            int rDest = InstructionUtils.extractRegister(word, 16);
-            int result = ~cpu.getRegister(rDest);
-            cpu.setRegister(rDest, result);
-            cpu.getFlags().update(result);
-        });
-
-        register(SHL, (cpu, word) -> {
-            int rDest = InstructionUtils.extractRegister(word, 16);
-            int shift = InstructionUtils.extractRegister(word, 8);
-            int result = cpu.getRegister(rDest) << shift;
-            cpu.setRegister(rDest, result);
-            cpu.getFlags().update(result);
-        });
-
-        register(SHR, (cpu, word) -> {
-            int rDest = InstructionUtils.extractRegister(word, 16);
-            int shift = InstructionUtils.extractRegister(word, 8);
-            int result = cpu.getRegister(rDest) >>> shift;
-            cpu.setRegister(rDest, result);
-            cpu.getFlags().update(result);
-        });
-
-        // Memory
-        register(LOAD, (cpu, word) -> {
-            int rDest = InstructionUtils.extractRegister(word, 16);
-            int rAddr = InstructionUtils.extractRegister(word, 8);
-            int value = cpu.getMemory().readWord(cpu.getRegister(rAddr));
-            cpu.setRegister(rDest, value);
-            cpu.getFlags().update(value);
-        });
-
-        register(STORE, (cpu, word) -> {
-            int rSrc = InstructionUtils.extractRegister(word, 16);
-            int rAddr = InstructionUtils.extractRegister(word, 8);
-            cpu.getMemory().writeWord(cpu.getRegister(rAddr), cpu.getRegister(rSrc));
-        });
-
-        // Control Flow
-        register(JMP, (cpu, word) -> {
-            int address = InstructionUtils.extractBits(word, 0, 24);
-            cpu.jump(address);
-        });
-
-        register(JZ, (cpu, word) -> {
-            int address = InstructionUtils.extractBits(word, 0, 24);
-            if (cpu.getFlags().isZero()) {
-                cpu.jump(address);
+            public int[] encode(String args) {
+                int rDest = parseRegister(args.trim());
+                return new int[]{encodeInstruction(rDest, 0, getOpcode("POP"))};
             }
         });
 
-        register(JNZ, (cpu, word) -> {
-            int address = InstructionUtils.extractBits(word, 0, 24);
-            if (!cpu.getFlags().isZero()) {
-                cpu.jump(address);
+        register("CMP", new Instruction() {
+            public void execute(CPU cpu, int[] words) {
+                int rA = InstructionUtils.extractRegister(words[0], 16);
+                int rB = InstructionUtils.extractRegister(words[0], 8);
+                int a = cpu.getRegister(rA);
+                int b = cpu.getRegister(rB);
+                cpu.getFlags().updateSub(a, b, a - b);
+            }
+
+            public int[] encode(String args) {
+                String[] parts = args.split(",");
+                int rA = parseRegister(parts[0]);
+                int rB = parseRegister(parts[1]);
+                return new int[]{encodeInstruction(rA, rB, getOpcode("CMP"))};
             }
         });
 
-        // Stack
-        register(PUSH, (cpu, word) -> {
-            int rSrc = InstructionUtils.extractRegister(word, 16);
-            cpu.push(cpu.getRegister(rSrc));
-        });
+        register("LOAD_I", new Instruction() {
+            public void execute(CPU cpu, int[] words) {
+                int rDest = InstructionUtils.extractRegister(words[0], 16);
+                cpu.setRegister(rDest, words[1]);
+                cpu.getFlags().update(words[1]);
+            }
 
-        register(POP, (cpu, word) -> {
-            int rDest = InstructionUtils.extractRegister(word, 16);
-            int val = cpu.pop();
-            cpu.setRegister(rDest, val);
-            cpu.getFlags().update(val);
-        });
+            public int[] encode(String args) {
+                String[] parts = args.split(",");
+                int rDest = parseRegister(parts[0].trim());
+                int imm = parseImmediate(parts[1].trim());
+                return new int[]{
+                        encodeInstruction(rDest, 0, getOpcode("LOAD_I")),
+                        imm
+                };
+            }
 
-        // Compare
-        register(CMP, (cpu, word) -> {
-            int rA = InstructionUtils.extractRegister(word, 16);
-            int rB = InstructionUtils.extractRegister(word, 8);
-            int result = cpu.getRegister(rA) - cpu.getRegister(rB);
-            cpu.getFlags().updateSub(cpu.getRegister(rA), cpu.getRegister(rB), result);
-        });
-
-        // Immediate value loader
-        register(LOAD_IMMEDIATE, (cpu, word) -> {
-            int rDest = InstructionUtils.extractRegister(word, 16);
-            int imm = InstructionUtils.extractRegister(word, 0);
-            cpu.setRegister(rDest, imm);
-            cpu.getFlags().update(imm);
+            public int getWordCount() {
+                return 2;
+            }
         });
     }
 
-    public InstructionSet register(byte opcode, Instruction instruction) {
-        instructionMap.put(opcode, instruction);
-        return this;
+    private Instruction createJumpInstruction(String name, Predicate<CPU> condition) {
+        return new Instruction() {
+            public void execute(CPU cpu, int[] words) {
+                if (condition.test(cpu)) cpu.jump(words[1]);
+            }
+
+            public int[] encode(String args) {
+                int addr = parseImmediate(args.trim());
+                return new int[]{
+                        encodeInstruction(0, 0, getOpcode(name)),
+                        addr
+                };
+            }
+
+            public int getWordCount() {
+                return 2;
+            }
+        };
     }
 
+    private Instruction createMemoryInstruction(String name, boolean load) {
+        return new Instruction() {
+            public void execute(CPU cpu, int[] words) {
+                int rA = InstructionUtils.extractRegister(words[0], 16);
+                int rB = InstructionUtils.extractRegister(words[0], 8);
+                if (load) {
+                    int value = cpu.getMemory().readWord(cpu.getRegister(rB));
+                    cpu.setRegister(rA, value);
+                    cpu.getFlags().update(value);
+                } else {
+                    cpu.getMemory().writeWord(cpu.getRegister(rB), cpu.getRegister(rA));
+                }
+            }
+
+            public int[] encode(String args) {
+                String[] parts = args.split(",");
+                int rA = parseRegister(parts[0]);
+                int rB = parseRegister(parts[1]);
+                return new int[]{encodeInstruction(rA, rB, getOpcode(name))};
+            }
+        };
+    }
+
+    private Instruction createShiftInstruction(String name, BiFunction<Integer, Integer, Integer> op) {
+        return new Instruction() {
+            public void execute(CPU cpu, int[] words) {
+                int rDest = InstructionUtils.extractRegister(words[0], 16);
+                int shift = InstructionUtils.extractRegister(words[0], 8);
+                int result = op.apply(cpu.getRegister(rDest), shift);
+                cpu.setRegister(rDest, result);
+                cpu.getFlags().update(result);
+            }
+
+            public int[] encode(String args) {
+                String[] parts = args.split(",");
+                int rDest = parseRegister(parts[0]);
+                int shift = parseImmediate(parts[1]);
+                return new int[]{encodeInstruction(rDest, shift, getOpcode(name))};
+            }
+        };
+    }
+
+    private void registerBinaryOp(String name, BiFunction<Integer, Integer, Integer> op, boolean updateAddFlags) {
+        register(name, new Instruction() {
+            public void execute(CPU cpu, int[] words) {
+                int rDest = InstructionUtils.extractRegister(words[0], 16);
+                int rSrc = InstructionUtils.extractRegister(words[0], 8);
+                int a = cpu.getRegister(rDest);
+                int b = cpu.getRegister(rSrc);
+                int result = op.apply(a, b);
+                cpu.setRegister(rDest, result);
+                if (updateAddFlags) cpu.getFlags().updateAdd(a, b, result);
+                else cpu.getFlags().update(result);
+            }
+
+            public int[] encode(String args) {
+                String[] parts = args.split(",");
+                int rDest = parseRegister(parts[0]);
+                int rSrc = parseRegister(parts[1]);
+                return new int[]{encodeInstruction(rDest, rSrc, getOpcode(name))};
+            }
+        });
+    }
+
+    @Override
     public Instruction getInstruction(int instructionWord) {
         byte opcode = decodeOpcode(instructionWord);
         return instructionMap.get(opcode);
     }
 
+    @Override
+    public InstructionSet register(String name, Instruction instruction) {
+        byte opcode = nextOpcode++;
+        instructionMap.put(opcode, instruction);
+        nameToOpcode.put(name, opcode);
+        opcodeToName.put(opcode, name);
+        return this;
+    }
+
+    @Override
+    public Byte getOpcode(String name) {
+        return nameToOpcode.get(name);
+    }
+
+    @Override
+    public String getName(Byte opcode) {
+        return opcodeToName.get(opcode);
+    }
+
+    @Override
+    public Set<String> getInstructionNames() {
+        return Collections.unmodifiableSet(nameToOpcode.keySet());
+    }
+
     private byte decodeOpcode(int instructionWord) {
         return (byte) (instructionWord & 0xFF);
+    }
+
+    private int encodeInstruction(int rDest, int rSrc, int opcode) {
+        return (rDest << 16) | (rSrc << 8) | (opcode & 0xFF);
+    }
+
+    private int parseRegister(String token) {
+        token = token.trim().toLowerCase();
+        if (!token.startsWith("r")) throw new IllegalArgumentException("Invalid register: " + token);
+        return Integer.parseInt(token.substring(1));
+    }
+
+    private int parseImmediate(String token) {
+        token = token.trim().toLowerCase();
+        if (token.startsWith("0x")) {
+            return Integer.parseInt(token.substring(2), 16);
+        }
+        return Integer.parseInt(token);
+    }
+
+    private void logInstructions() {
+        System.out.println("Registered instructions:");
+        nameToOpcode.forEach((name, opcode) ->
+                System.out.printf("  %s -> 0x%02X%n", name, opcode)
+        );
     }
 }
