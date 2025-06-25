@@ -16,4 +16,17 @@ public interface MemoryMap {
     int getTotalMemorySize();
     int getHeapStart();
     int getHeapSize();
+
+    enum VramFormat {
+        RAW_BYTES,
+        RGBA32,
+        RGB565,
+        INDEXED_8BIT,
+        TILE_MAP,
+        // add more if needed
+    }
+
+    VramFormat getVramFormat();
+    int getVramWidth();
+    int getVramHeight();
 }

@@ -10,11 +10,19 @@ import org.lpc.memory.MemoryMap;
 import org.lpc.memory.NeptuneMemoryMap;
 import org.lpc.visualization.debug.CpuViewer;
 import org.lpc.visualization.debug.MemoryViewer;
+import org.lpc.visualization.vram.RGBA32Visualiser;
 
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 
 public class Main extends Application {
     private CPU cpu;
+
+    private static final int VRAM_PIXEL_SCALE = 4;
 
     @Override
     public void start(Stage primaryStage) {
@@ -36,35 +44,33 @@ public class Main extends Application {
     }
 
     private void loadProgram() {
-        new Assembler(cpu).assembleAndLoad(List.of(
-                "LOAD_I r1, 5",         // r1 = 5 (counter)
-                "LOAD_I r2, 1",         // r2 = 1 (decrement value)
-                "LOAD_I r3, 0",         // r3 = 0 (comparison value)
-
-                "loop:",
-                "SUB r1, r2",           // r1 -= 1
-                "CMP r1, r3",           // compare r1 with 0
-                "JNZ loop",             // if r1 != 0, jump back
-
-                "LOAD_I r4, 0x1100",    // r4 = memory address 0x1100
-                "STORE r1, r4"          // store final r1 (should be 0)
-        ));
+        try (var stream = getClass().getResourceAsStream("/test.asm")) {
+            if (stream == null) throw new RuntimeException("Resource not found: test.asm");
+            List<String> lines = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8)).lines().toList();
+            new Assembler(cpu).assembleAndLoad(lines);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to load assembly program", e);
+        }
     }
+
 
     private void visualise() {
         var memoryViewer = new MemoryViewer(cpu);
         var cpuViewer = new CpuViewer(cpu);
+        var vramViewer = new RGBA32Visualiser(cpu.getMemory(), cpu.getMemoryMap());
 
         Stage cpuStage = new Stage();
         Stage memoryStage = new Stage();
+        Stage vramStage = new Stage();
+
         cpuViewer.start(cpuStage);
         memoryViewer.start(memoryStage);
+        vramViewer.start(vramStage);
 
-        positionStages(memoryStage, cpuStage);
+        positionStages(memoryStage, cpuStage, vramStage);
     }
 
-
-    private void positionStages(Stage memStage, Stage cpuStage) {
+    private void positionStages(Stage memStage, Stage cpuStage, Stage vramStage) {
         var screenBounds = Screen.getPrimary().getVisualBounds();
 
         memStage.setX(screenBounds.getMinX() + 50);
@@ -73,6 +79,12 @@ public class Main extends Application {
         cpuStage.setX(memStage.getX() + memStage.getWidth() + 20);
         cpuStage.setY(memStage.getY());
         cpuStage.setWidth(700);
+
+        int vramWidth = cpu.getMemoryMap().getVramWidth();
+        int vramHeight = cpu.getMemoryMap().getVramHeight();
+
+        vramStage.setWidth(vramWidth * VRAM_PIXEL_SCALE + 16);
+        vramStage.setHeight(vramHeight * VRAM_PIXEL_SCALE + 39);
     }
 
     public static void main(String[] args) {

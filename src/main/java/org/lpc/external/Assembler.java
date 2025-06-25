@@ -25,7 +25,15 @@ public class Assembler {
         // Pass 1: Parse lines, collect labels and calculate addresses
         for (String rawLine : lines) {
             String line = rawLine.trim();
-            if (line.isEmpty() || line.startsWith(";") || line.startsWith("#")) continue;
+            if (line.isEmpty() || line.startsWith("#") || line.startsWith(";")) continue;
+
+            int commentIdx = Math.min(
+                    line.indexOf(';') == -1 ? line.length() : line.indexOf(';'),
+                    line.indexOf('#') == -1 ? line.length() : line.indexOf('#')
+            );
+            line = line.substring(0, commentIdx).trim();
+
+            if (line.isEmpty()) continue;
 
             if (line.endsWith(":")) {
                 String label = line.substring(0, line.length() - 1).trim();
@@ -40,7 +48,7 @@ public class Assembler {
 
                 Byte opcode = instructionSet.getOpcode(mnemonic);
                 if (opcode == null) {
-                    throw new IllegalArgumentException("Unknown instruction: " + mnemonic);
+                    throw new IllegalArgumentException("Unknown instruction: '" + line + "'");
                 }
 
                 Instruction instr = instructionSet.getInstruction(opcode & 0xFF);
@@ -56,7 +64,13 @@ public class Assembler {
         // Pass 2: Encode instructions, resolve labels
         for (SourceLine line : parsedLines) {
             String resolvedArgs = resolveArgs(line.args(), labelToAddress);
-            int[] words = line.instruction().encode(resolvedArgs);
+
+            int[] words;
+            try {
+                words = line.instruction().encode(resolvedArgs);
+            } catch (Exception e) {
+                throw new RuntimeException("Failed to encode " + line.args);
+            }
 
             int addr = line.address();
             for (int word : words) {
