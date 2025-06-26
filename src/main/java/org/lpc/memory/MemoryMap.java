@@ -12,9 +12,12 @@ public interface MemoryMap {
     int getRamSize();
     int getVramStart();
     int getVramSize();
+    VramFormat getVramFormat();
+    int getVramWidth();
+    int getVramHeight();
+
     int getIoStart();
     int getIoSize();
-
 
     int getStackStart();
     int getProgramStart();
@@ -29,8 +32,4 @@ public interface MemoryMap {
         INDEXED_8BIT,
         TILE_MAP
     }
-
-    VramFormat getVramFormat();
-    int getVramWidth();
-    int getVramHeight();
 }
