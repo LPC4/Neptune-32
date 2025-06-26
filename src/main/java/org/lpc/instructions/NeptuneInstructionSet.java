@@ -740,12 +740,11 @@ public class NeptuneInstructionSet implements InstructionSet {
     }
 
     @Override
-    public InstructionSet register(String name, Instruction instruction) {
+    public void register(String name, Instruction instruction) {
         byte opcode = nextOpcode++;
         instructionMap.put(opcode, instruction);
         nameToOpcode.put(name, opcode);
         opcodeToName.put(opcode, name);
-        return this;
     }
 
     @Override

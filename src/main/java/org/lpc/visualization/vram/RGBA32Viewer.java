@@ -1,5 +1,6 @@
 package org.lpc.visualization.vram;
 
+import javafx.animation.AnimationTimer;
 import javafx.scene.image.PixelWriter;
 import org.lpc.memory.MemoryBus;
 import org.lpc.memory.MemoryMap;
@@ -9,10 +10,12 @@ public class RGBA32Viewer extends VramViewer {
 
     public RGBA32Viewer() {
         super();
+        startRenderTimer();
     }
 
     public RGBA32Viewer(MemoryBus memoryBus, MemoryMap memoryMap) {
         super(memoryBus, memoryMap);
+        startRenderTimer();
     }
 
     @Override
@@ -40,5 +43,20 @@ public class RGBA32Viewer extends VramViewer {
                 writer.setArgb(x, y, argb);
             }
         }
+    }
+
+    private void startRenderTimer() {
+        new AnimationTimer() {
+            private static final long interval = 50_000_000; // 50 ms in nanoseconds -> 20 FPS
+            private long lastUpdate = 0;
+
+            @Override
+            public void handle(long now) {
+                if (now - lastUpdate >= interval) {
+                    updateImage();
+                    lastUpdate = now;
+                }
+            }
+        }.start();
     }
 }

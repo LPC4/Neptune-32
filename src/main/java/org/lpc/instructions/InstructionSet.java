@@ -5,7 +5,7 @@ import java.util.Set;
 public interface InstructionSet {
     Instruction getInstruction(int instructionWord);
 
-    InstructionSet register(String name, Instruction instruction);
+    void register(String name, Instruction instruction);
 
     Byte getOpcode(String name);
 

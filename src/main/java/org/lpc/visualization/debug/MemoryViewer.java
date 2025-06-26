@@ -1,5 +1,6 @@
 package org.lpc.visualization.debug;
 
+import javafx.animation.AnimationTimer;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -41,7 +42,8 @@ public class MemoryViewer {
 
     private final Map<String, Integer> memorySections = new LinkedHashMap<>();
 
-    // Style constants
+    private long lastUpdate = 0;
+
     private static final Font TITLE_FONT = Font.font("Segoe UI", FontWeight.BOLD, 20);
     private static final Font SECTION_FONT = Font.font("Segoe UI", FontWeight.SEMI_BOLD, 14);
     private static final Font LABEL_FONT = Font.font("Segoe UI", FontWeight.NORMAL, 12);
@@ -76,22 +78,18 @@ public class MemoryViewer {
         BorderPane root = new BorderPane();
         root.setStyle("-fx-background-color: " + BACKGROUND_COLOR + ";");
 
-        // Title
         Label title = new Label("Memory Viewer");
         title.setFont(TITLE_FONT);
         title.setTextFill(Color.web(TEXT_COLOR));
         title.setAlignment(Pos.CENTER);
         BorderPane.setMargin(title, new Insets(15, 20, 10, 20));
 
-        // Control Panel - Fixed height
         VBox controlPanel = createControlPanel();
         controlPanel.setMaxHeight(120);
         controlPanel.setMinHeight(120);
 
-        // Memory Table - Fills remaining space
         VBox tableSection = createTableSection();
 
-        // Status Bar - Fixed height
         HBox statusBar = createStatusBar();
         statusBar.setMaxHeight(50);
         statusBar.setMinHeight(50);
@@ -100,7 +98,6 @@ public class MemoryViewer {
         root.setCenter(tableSection);
         root.setBottom(statusBar);
 
-        // Set margins
         BorderPane.setMargin(controlPanel, new Insets(0, 20, 10, 20));
         BorderPane.setMargin(tableSection, new Insets(0, 20, 10, 20));
         BorderPane.setMargin(statusBar, new Insets(0, 20, 15, 20));
@@ -110,8 +107,176 @@ public class MemoryViewer {
         Scene scene = new Scene(root, 1000, 700);
         stage.setScene(scene);
         stage.setTitle("Memory Viewer - Debug Monitor");
-        stage.setResizable(false); // Prevent resizing to maintain layout
+        stage.setResizable(false);
         stage.show();
+
+        startAutoRefresh();
+    }
+
+    private void startAutoRefresh() {
+        AnimationTimer refreshTimer = new AnimationTimer() {
+            @Override
+            public void handle(long now) {
+                if (now - lastUpdate >= 200_000_000) {
+                    refreshTable();
+                    lastUpdate = now;
+                }
+            }
+        };
+        refreshTimer.start();
+    }
+
+    private VBox createTableSection() {
+        VBox tableSection = new VBox(8);
+
+        Label sectionTitle = new Label("📋 Memory Contents");
+        sectionTitle.setFont(SECTION_FONT);
+        sectionTitle.setTextFill(Color.web(ACCENT_COLOR));
+
+        tableView = new TableView<>();
+        tableView.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_FLEX_LAST_COLUMN);
+
+        tableView.setStyle("-fx-background-color: " + CARD_COLOR + "; " +
+                "-fx-border-color: " + BORDER_COLOR + "; " +
+                "-fx-border-width: 1px; " +
+                "-fx-border-radius: 8px; " +
+                "-fx-background-radius: 8px;");
+
+        TableColumn<MemoryRow, String> addrCol = new TableColumn<>("📍 Address");
+        addrCol.setCellValueFactory(data -> new SimpleStringProperty(data.getValue().getAddress()));
+        addrCol.setMaxWidth(120);
+        addrCol.setMinWidth(120);
+        addrCol.setStyle("-fx-alignment: CENTER;");
+
+        TableColumn<MemoryRow, String> bytesCol = new TableColumn<>("📊 Hex Bytes");
+        bytesCol.setCellValueFactory(data -> new SimpleStringProperty(data.getValue().getBytes()));
+        bytesCol.setMinWidth(150);
+
+        TableColumn<MemoryRow, String> instrCol = new TableColumn<>("⚙️ Instruction");
+        instrCol.setCellValueFactory(data -> new SimpleStringProperty(data.getValue().getInstruction()));
+        instrCol.setMinWidth(200);
+
+        addrCol.setStyle("-fx-font-weight: bold; -fx-font-family: 'Segoe UI';");
+        bytesCol.setStyle("-fx-font-weight: bold; -fx-font-family: 'Segoe UI';");
+        instrCol.setStyle("-fx-font-weight: bold; -fx-font-family: 'Segoe UI';");
+
+        tableView.getColumns().addAll(addrCol, bytesCol, instrCol);
+
+        tableView.setRowFactory(tv -> {
+            TableRow<MemoryRow> row = new TableRow<>();
+            row.itemProperty().addListener((obs, oldItem, newItem) -> {
+                if (newItem != null) {
+                    row.setStyle("-fx-font-family: 'Consolas'; -fx-font-size: 11px;");
+
+                    String addr = newItem.getAddress().replace("0x", "");
+                    int memAddr = Integer.parseInt(addr, 16);
+                    int pc = cpu.getProgramCounter();
+
+                    if (memAddr == pc) {
+                        row.setStyle("-fx-background-color: #fff3cd; -fx-font-family: 'Consolas'; " +
+                                "-fx-font-size: 11px; -fx-font-weight: bold;");
+                    } else if (memAddr >= pc && memAddr < pc + 16) {
+                        row.setStyle("-fx-background-color: #f8f9fa; -fx-font-family: 'Consolas'; " +
+                                "-fx-font-size: 11px;");
+                    }
+                }
+            });
+            return row;
+        });
+
+        tableSection.getChildren().addAll(sectionTitle, tableView);
+        VBox.setVgrow(tableView, Priority.ALWAYS);
+        return tableSection;
+    }
+
+    private HBox createStatusBar() {
+        HBox statusBar = new HBox(15);
+        statusBar.setPadding(new Insets(10));
+        statusBar.setAlignment(Pos.CENTER_LEFT);
+        statusBar.setStyle("-fx-background-color: " + CARD_COLOR + "; " +
+                "-fx-border-color: " + BORDER_COLOR + "; " +
+                "-fx-border-width: 1px; " +
+                "-fx-border-radius: 8px; " +
+                "-fx-background-radius: 8px;");
+
+        currentAddressLabel = new Label();
+        currentAddressLabel.setFont(MONO_FONT);
+        currentAddressLabel.setTextFill(Color.web(SUCCESS_COLOR));
+
+        memoryInfoLabel = new Label();
+        memoryInfoLabel.setFont(LABEL_FONT);
+        memoryInfoLabel.setTextFill(Color.web(MUTED_COLOR));
+
+        Label pcLabel = new Label();
+        pcLabel.setFont(MONO_FONT);
+        pcLabel.setTextFill(Color.web(ACCENT_COLOR));
+        pcLabel.setText("PC: 0x" + String.format("%08X", cpu.getProgramCounter()));
+
+        statusBar.getChildren().addAll(
+                new Label("📍 Current View:"), currentAddressLabel,
+                createSeparator(),
+                new Label("💾 Memory:"), memoryInfoLabel,
+                createSeparator(),
+                pcLabel
+        );
+
+        return statusBar;
+    }
+
+    private Separator createSeparator() {
+        Separator sep = new Separator();
+        sep.setOrientation(Orientation.VERTICAL);
+        sep.setPrefHeight(20);
+        return sep;
+    }
+
+    private int clampAddress(final int addr) {
+        int maxStart = Math.max(0, memoryMap.getTotalMemorySize() - ROW_SIZE * ROWS_TO_SHOW);
+        if (addr < 0) return 0;
+        if (addr > maxStart) return maxStart;
+        return addr & ~(ROW_SIZE - 1);
+    }
+
+    private void refreshTable() {
+        ObservableList<MemoryRow> rows = FXCollections.observableArrayList();
+
+        for (int row = 0; row < ROWS_TO_SHOW; row++) {
+            final int addr = currentAddress + row * ROW_SIZE;
+            if (addr + ROW_SIZE > memoryMap.getTotalMemorySize()) break;
+
+            StringBuilder bytesHex = new StringBuilder();
+            for (int i = 0; i < ROW_SIZE; i++) {
+                try {
+                    int b = memory.readByte(addr + i) & 0xFF;
+                    bytesHex.append(String.format("%02X ", b));
+                } catch (IllegalArgumentException ex) {
+                    bytesHex.append("-- ");
+                }
+            }
+
+            int word = 0;
+            try {
+                word = memory.readWord(addr);
+            } catch (IllegalArgumentException ignored) {
+            }
+            byte opcode = (byte) (word & 0xFF);
+            String instrName = instructionSet.getName(opcode);
+            if (instrName == null) instrName = "UNKNOWN";
+
+            String instructionText = instrName + " (0x" + String.format("%02X", opcode & 0xFF) + ")";
+
+            rows.add(new MemoryRow(String.format("0x%08X", addr), bytesHex.toString().trim(), instructionText));
+        }
+
+        tableView.setItems(rows);
+
+        currentAddressLabel.setText(String.format("0x%08X - 0x%08X",
+                currentAddress,
+                currentAddress + (ROWS_TO_SHOW * ROW_SIZE) - 1));
+
+        memoryInfoLabel.setText(String.format("Total: %d bytes | Showing: %d rows",
+                memoryMap.getTotalMemorySize(),
+                Math.min(ROWS_TO_SHOW, rows.size())));
     }
 
     private VBox createControlPanel() {
@@ -201,76 +366,6 @@ public class MemoryViewer {
         return controlPanel;
     }
 
-    private VBox createTableSection() {
-        VBox tableSection = new VBox(8);
-
-        Label sectionTitle = new Label("📋 Memory Contents");
-        sectionTitle.setFont(SECTION_FONT);
-        sectionTitle.setTextFill(Color.web(ACCENT_COLOR));
-
-        tableView = new TableView<>();
-        tableView.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
-
-        // Remove the outer container styling to save space
-        tableView.setStyle("-fx-background-color: " + CARD_COLOR + "; " +
-                "-fx-border-color: " + BORDER_COLOR + "; " +
-                "-fx-border-width: 1px; " +
-                "-fx-border-radius: 8px; " +
-                "-fx-background-radius: 8px;");
-
-        // Address Column
-        TableColumn<MemoryRow, String> addrCol = new TableColumn<>("📍 Address");
-        addrCol.setCellValueFactory(data -> new SimpleStringProperty(data.getValue().getAddress()));
-        addrCol.setMaxWidth(120);
-        addrCol.setMinWidth(120);
-        addrCol.setStyle("-fx-alignment: CENTER;");
-
-        // Bytes Column
-        TableColumn<MemoryRow, String> bytesCol = new TableColumn<>("📊 Hex Bytes");
-        bytesCol.setCellValueFactory(data -> new SimpleStringProperty(data.getValue().getBytes()));
-        bytesCol.setMinWidth(150);
-
-        // Instruction Column
-        TableColumn<MemoryRow, String> instrCol = new TableColumn<>("⚙️ Instruction");
-        instrCol.setCellValueFactory(data -> new SimpleStringProperty(data.getValue().getInstruction()));
-        instrCol.setMinWidth(200);
-
-        // Style the table headers
-        addrCol.setStyle("-fx-font-weight: bold; -fx-font-family: 'Segoe UI';");
-        bytesCol.setStyle("-fx-font-weight: bold; -fx-font-family: 'Segoe UI';");
-        instrCol.setStyle("-fx-font-weight: bold; -fx-font-family: 'Segoe UI';");
-
-        tableView.getColumns().addAll(addrCol, bytesCol, instrCol);
-
-        // Set row factory for custom styling
-        tableView.setRowFactory(tv -> {
-            TableRow<MemoryRow> row = new TableRow<>();
-            row.itemProperty().addListener((obs, oldItem, newItem) -> {
-                if (newItem != null) {
-                    row.setStyle("-fx-font-family: 'Consolas'; -fx-font-size: 11px;");
-
-                    // Highlight current PC location
-                    String addr = newItem.getAddress().replace("0x", "");
-                    int memAddr = Integer.parseInt(addr, 16);
-                    int pc = cpu.getProgramCounter();
-
-                    if (memAddr == pc) {
-                        row.setStyle("-fx-background-color: #fff3cd; -fx-font-family: 'Consolas'; " +
-                                "-fx-font-size: 11px; -fx-font-weight: bold;");
-                    } else if (memAddr >= pc && memAddr < pc + 16) {
-                        row.setStyle("-fx-background-color: #f8f9fa; -fx-font-family: 'Consolas'; " +
-                                "-fx-font-size: 11px;");
-                    }
-                }
-            });
-            return row;
-        });
-
-        tableSection.getChildren().addAll(sectionTitle, tableView);
-        VBox.setVgrow(tableView, Priority.ALWAYS);
-        return tableSection;
-    }
-
     private Button createCompactButton(String text) {
         Button button = new Button(text);
         button.setFont(Font.font("Segoe UI", 12));
@@ -303,47 +398,6 @@ public class MemoryViewer {
         sep.setOrientation(Orientation.VERTICAL);
         sep.setPrefHeight(20);
         sep.setStyle("-fx-padding: 0 4px;");
-        return sep;
-    }
-
-    private HBox createStatusBar() {
-        HBox statusBar = new HBox(15);
-        statusBar.setPadding(new Insets(10));
-        statusBar.setAlignment(Pos.CENTER_LEFT);
-        statusBar.setStyle("-fx-background-color: " + CARD_COLOR + "; " +
-                "-fx-border-color: " + BORDER_COLOR + "; " +
-                "-fx-border-width: 1px; " +
-                "-fx-border-radius: 8px; " +
-                "-fx-background-radius: 8px;");
-
-        currentAddressLabel = new Label();
-        currentAddressLabel.setFont(MONO_FONT);
-        currentAddressLabel.setTextFill(Color.web(SUCCESS_COLOR));
-
-        memoryInfoLabel = new Label();
-        memoryInfoLabel.setFont(LABEL_FONT);
-        memoryInfoLabel.setTextFill(Color.web(MUTED_COLOR));
-
-        Label pcLabel = new Label();
-        pcLabel.setFont(MONO_FONT);
-        pcLabel.setTextFill(Color.web(ACCENT_COLOR));
-        pcLabel.setText("PC: 0x" + String.format("%08X", cpu.getProgramCounter()));
-
-        statusBar.getChildren().addAll(
-                new Label("📍 Current View:"), currentAddressLabel,
-                createSeparator(),
-                new Label("💾 Memory:"), memoryInfoLabel,
-                createSeparator(),
-                pcLabel
-        );
-
-        return statusBar;
-    }
-
-    private Separator createSeparator() {
-        Separator sep = new Separator();
-        sep.setOrientation(javafx.geometry.Orientation.VERTICAL);
-        sep.setPrefHeight(20);
         return sep;
     }
 
@@ -390,61 +444,6 @@ public class MemoryViewer {
         textField.setFont(MONO_FONT);
     }
 
-    private int clampAddress(final int addr) {
-        int maxStart = Math.max(0, memoryMap.getTotalMemorySize() - ROW_SIZE * ROWS_TO_SHOW);
-        if (addr < 0) return 0;
-        if (addr > maxStart) return maxStart;
-        return addr & ~(ROW_SIZE - 1); // Align to row boundary
-    }
-
-    private void refreshTable() {
-        ObservableList<MemoryRow> rows = FXCollections.observableArrayList();
-
-        for (int row = 0; row < ROWS_TO_SHOW; row++) {
-            final int addr = currentAddress + row * ROW_SIZE;
-
-            // Ensure we don't read beyond memory size
-            if (addr + ROW_SIZE > memoryMap.getTotalMemorySize()) break;
-
-            // Read bytes safely, fallback to 0x00 on error
-            StringBuilder bytesHex = new StringBuilder();
-            for (int i = 0; i < ROW_SIZE; i++) {
-                try {
-                    int b = memory.readByte(addr + i) & 0xFF;
-                    bytesHex.append(String.format("%02X ", b));
-                } catch (IllegalArgumentException ex) {
-                    bytesHex.append("-- ");
-                }
-            }
-
-            // Decode instruction
-            int word = 0;
-            try {
-                word = memory.readWord(addr);
-            } catch (IllegalArgumentException ex) {
-                word = 0;
-            }
-            byte opcode = (byte) (word & 0xFF);
-            String instrName = instructionSet.getName(opcode);
-            if (instrName == null) instrName = "UNKNOWN";
-
-            String instructionText = instrName + " (0x" + String.format("%02X", opcode & 0xFF) + ")";
-
-            rows.add(new MemoryRow(String.format("0x%08X", addr), bytesHex.toString().trim(), instructionText));
-        }
-
-        tableView.setItems(rows);
-
-        // Update status bar
-        currentAddressLabel.setText(String.format("0x%08X - 0x%08X",
-                currentAddress,
-                currentAddress + (ROWS_TO_SHOW * ROW_SIZE) - 1));
-
-        memoryInfoLabel.setText(String.format("Total: %d bytes | Showing: %d rows",
-                memoryMap.getTotalMemorySize(),
-                Math.min(ROWS_TO_SHOW, rows.size())));
-    }
-
     private void showStyledAlert(String title, String message) {
         Alert alert = new Alert(Alert.AlertType.WARNING);
         alert.setTitle(title);
@@ -469,8 +468,16 @@ public class MemoryViewer {
             this.instruction = new SimpleStringProperty(instruction);
         }
 
-        public String getAddress() { return address.get(); }
-        public String getBytes() { return bytes.get(); }
-        public String getInstruction() { return instruction.get(); }
+        public String getAddress() {
+            return address.get();
+        }
+
+        public String getBytes() {
+            return bytes.get();
+        }
+
+        public String getInstruction() {
+            return instruction.get();
+        }
     }
 }

@@ -9,49 +9,107 @@ The Neptune Assembly Project is a comprehensive assembly language environment fe
 ## Instruction Set Reference
 
 ### Arithmetic Instructions
-| Instruction | Format            | Description                                      |
-|-------------|-------------------|--------------------------------------------------|
-| ADD         | `rDest, rSrc`    | Add rSrc to rDest                                |
-| ADDI        | `rDest, imm`     | Add immediate to rDest                           |
-| SUB         | `rDest, rSrc`    | Subtract rSrc from rDest                         |
-| SUBI        | `rDest, imm`     | Subtract immediate from rDest                    |
-| MUL         | `rDest, rSrc`    | Multiply rDest by rSrc                           |
-| MULI        | `rDest, imm`     | Multiply rDest by immediate                      |
-| DIV         | `rDest, rSrc`    | Divide rDest by rSrc                             |
-| DIVI        | `rDest, imm`     | Divide rDest by immediate                        |
-| MOD         | `rDest, rSrc`    | Modulo rDest by rSrc                             |
-| MODI        | `rDest, imm`     | Modulo rDest by immediate                        |
-| INC         | `rDest`          | Increment rDest by 1                             |
-| DEC         | `rDest`          | Decrement rDest by 1                             |
-| NEG         | `rDest`          | Negate rDest                                     |
+| Instruction | Format         | Description                                      | Flags Affected |
+|-------------|----------------|--------------------------------------------------|---------------|
+| ADD         | `rDest, rSrc`  | Add rSrc to rDest                                | Z, N, V, C    |
+| ADDI        | `rDest, imm`   | Add immediate to rDest                           | Z, N, V, C    |
+| SUB         | `rDest, rSrc`  | Subtract rSrc from rDest                         | Z, N, V, C    |
+| SUBI        | `rDest, imm`   | Subtract immediate from rDest                    | Z, N, V, C    |
+| MUL         | `rDest, rSrc`  | Multiply rDest by rSrc                           | Z, N, V, C    |
+| MULI        | `rDest, imm`   | Multiply rDest by immediate                      | Z, N, V, C    |
+| DIV         | `rDest, rSrc`  | Divide rDest by rSrc                             | Z, N, V, C    |
+| DIVI        | `rDest, imm`   | Divide rDest by immediate                        | Z, N, V, C    |
+| MOD         | `rDest, rSrc`  | Modulo rDest by rSrc                             | Z, N, V, C    |
+| MODI        | `rDest, imm`   | Modulo rDest by immediate                        | Z, N, V, C    |
+| INC         | `rDest`        | Increment rDest by 1                             | Z, N, V, C    |
+| DEC         | `rDest`        | Decrement rDest by 1                             | Z, N, V, C    |
+| NEG         | `rDest`        | Negate rDest                                     | Z, N, V, C    |
 
 ### Logical Instructions
-| Instruction | Format            | Description                                      |
-|-------------|-------------------|--------------------------------------------------|
-| AND         | `rDest, rSrc`    | Bitwise AND rDest with rSrc                      |
-| ANDI        | `rDest, imm`     | Bitwise AND rDest with immediate                 |
-| OR          | `rDest, rSrc`    | Bitwise OR rDest with rSrc                       |
-| ORI         | `rDest, imm`     | Bitwise OR rDest with immediate                  |
-| XOR         | `rDest, rSrc`    | Bitwise XOR rDest with rSrc                      |
-| XORI        | `rDest, imm`     | Bitwise XOR rDest with immediate                 |
-| NOT         | `rDest`          | Bitwise NOT of rDest                             |
+| Instruction | Format         | Description                                      | Flags Affected |
+|-------------|----------------|--------------------------------------------------|---------------|
+| AND         | `rDest, rSrc`  | Bitwise AND rDest with rSrc                      | Z, N          |
+| ANDI        | `rDest, imm`   | Bitwise AND rDest with immediate                 | Z, N          |
+| OR          | `rDest, rSrc`  | Bitwise OR rDest with rSrc                       | Z, N          |
+| ORI         | `rDest, imm`   | Bitwise OR rDest with immediate                  | Z, N          |
+| XOR         | `rDest, rSrc`  | Bitwise XOR rDest with rSrc                      | Z, N          |
+| XORI        | `rDest, imm`   | Bitwise XOR rDest with immediate                 | Z, N          |
+| NOT         | `rDest`        | Bitwise NOT of rDest                             | Z, N          |
+
+### Shift Instructions
+| Instruction | Format         | Description                                      | Flags Affected |
+|-------------|----------------|--------------------------------------------------|---------------|
+| SHL         | `rDest, shift` | Shift rDest left by shift bits                   | Z, N, C       |
+| SHR         | `rDest, shift` | Logical shift rDest right by shift bits          | Z, N, C       |
 
 ### Memory Instructions
-| Instruction | Format            | Description                                      |
-|-------------|-------------------|--------------------------------------------------|
-| LOAD        | `rDest, rAddr`   | Load word from memory at rAddr into rDest        |
-| STORE       | `rSrc, rAddr`    | Store word from rSrc into memory at rAddr        |
+| Instruction | Format         | Description                                      | Flags Affected |
+|-------------|----------------|--------------------------------------------------|---------------|
+| LOAD        | `rDest, rAddr` | Load word from memory at rAddr                   | Z, N          |
+| STORE       | `rSrc, rAddr`  | Store word into memory at rAddr                  | None          |
 
 ### Control Flow Instructions
-| Instruction | Format            | Description                                      |
-|-------------|-------------------|--------------------------------------------------|
-| JMP         | `address`         | Unconditional jump                               |
-| JZ          | `address`         | Jump if zero flag set                            |
-| JNZ         | `address`         | Jump if zero flag not set                        |
-| JL          | `address`         | Jump if negative flag set                        |
-| JG          | `address`         | Jump if not zero and not negative                |
-| CALL        | `address`         | Push PC and jump to address                      |
-| RET         |                   | Pop PC from stack and jump                       |
+| Instruction | Format         | Description                                      | Flags Affected |
+|-------------|----------------|--------------------------------------------------|---------------|
+| JMP         | `address`      | Unconditional jump                               | None          |
+| JZ          | `address`      | Jump if zero flag set                            | None          |
+| JNZ         | `address`      | Jump if zero flag not set                        | None          |
+| JL          | `address`      | Jump if negative flag set                        | None          |
+| JG          | `address`      | Jump if not zero and not negative                | None          |
+| JN          | `address`      | Jump if negative flag set                        | None          |
+| JP          | `address`      | Jump if negative flag not set                    | None          |
+| CALL        | `address`      | Push PC and jump to address                      | None          |
+| RET         |                | Pop PC from stack and jump                       | None          |
+
+### Stack Instructions
+| Instruction | Format         | Description                                      | Flags Affected |
+|-------------|----------------|--------------------------------------------------|---------------|
+| PUSH        | `rSrc`         | Push register onto stack                         | None          |
+| POP         | `rDest`        | Pop from stack into register                     | Z, N          |
+
+### Data Movement Instructions
+| Instruction | Format         | Description                                      | Flags Affected |
+|-------------|----------------|--------------------------------------------------|---------------|
+| MOV         | `rDest, rSrc`  | Copy value from rSrc to rDest                    | Z, N          |
+| LOADI       | `rDest, imm`   | Load immediate into rDest                        | Z, N          |
+| CLR         | `rDest`        | Clear rDest (set to 0)                           | Z, N          |
+
+### Comparison Instructions
+| Instruction | Format         | Description                                      | Flags Affected |
+|-------------|----------------|--------------------------------------------------|---------------|
+| CMP         | `rA, rB`       | Compare rA with rB (rA - rB)                     | Z, N, V, C    |
+| CMPI        | `rA, imm`      | Compare rA with immediate                        | Z, N, V, C    |
+| TEST        | `rA, rB`       | Bitwise AND of rA and rB                         | Z, N          |
+| TESTI       | `rA, imm`      | Bitwise AND of rA and immediate                  | Z, N          |
+
+### System Instructions
+| Instruction | Format         | Description                                      | Flags Affected |
+|-------------|----------------|--------------------------------------------------|---------------|
+| SYSCALL     |                | Execute system call specified by r0             | None          |
+| NOP         |                | No operation                                     | None          |
+| HLT         |                | Halt the CPU                                     | None          |
+| PRINT       | `rSrc`         | Print value in rSrc                              | None          |
+
+### Flag Behavior
+| Flag | Name         | Description                                      |
+|------|--------------|--------------------------------------------------|
+| Z    | Zero         | Set when result is zero                          |
+| N    | Negative     | Set when result is negative (MSB = 1)            |
+| V    | Overflow     | Set when arithmetic overflow occurs             |
+| C    | Carry        | Set when carry occurs                           |
+
+### Register Convention
+- `r0-r15`: General purpose 32-bit registers
+- Stack pointer: Implicit (not directly accessible)
+
+### Memory Access
+- Word-addressable (32-bit values)
+- Byte-addressable memory accessed in words
+- Little-endian byte ordering
+
+### Immediate Values
+- Decimal: `42`
+- Hexadecimal: `0x2A`
 
 ## System Calls
 
@@ -139,10 +197,6 @@ Use the included debugging tools to inspect program execution:
 - `CpuViewer`: Monitor register values and CPU state
 - `MemoryViewer`: Examine memory contents
 - `VramViewer`: Visualize VRAM content in RGBA32 format
-
-## Register Convention
-- `r0-r15`: General purpose registers
-- Flags: Zero (Z), Negative (N), Overflow (V), Carry (C)
 
 ## License
 This project is licensed under the MIT License. See the LICENSE file for details.

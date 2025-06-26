@@ -1,56 +1,67 @@
-; Neptune Assembly Program - Half Green, Half Blue Screen Fill
+; Neptune Assembly - Smooth Fade from Blue to Green
 
 START:
-    ; Get VRAM information
-    LOADI r0, 1          ; System call 1: Get VRAM info
-    SYSCALL              ; r1=start, r2=size, r3=width, r4=height
+    ; Get VRAM info
+    LOADI r0, 1
+    SYSCALL              ; r1 = VRAM start, r2 = size, r3 = width, r4 = height
 
-    ; Store VRAM info for later use
-    MOV r15, r1          ; r15 = VRAM start address
-    MOV r14, r3          ; r14 = width (save for syscall parameter)
-    MOV r13, r4          ; r13 = height (save for loop comparison)
+    MOV r15, r1          ; VRAM base
+    MOV r14, r3          ; width
+    MOV r13, r4          ; height
 
-    ; Calculate half width
-    SHR r14, 1           ; r14 = width/2 (halfway point)
+    LOADI r5, 0xFFFF0000 ; Start color (blueish)
+    LOADI r6, 0xFF00FF00 ; Target color (green), for reference
 
-    ; Set up colors
-    LOADI r5, 0xFF00FF00 ; Green color (ARGB: Alpha=FF, Red=00, Green=FF, Blue=00)
-    LOADI r8, 0xFFFF0000 ; Blue color (ARGB: Alpha=FF, Red=00, Green=00, Blue=FF)
-
-    ; Fill screen using pixel syscall
-    CLR r6               ; r6 = y coordinate (row)
+main_loop:
+    ; Fill screen with current color in r5
+    CLR r8               ; y = 0
 outer_loop:
-    CLR r7               ; r7 = x coordinate (column)
-    inner_loop:
-        ; Set parameters for set_pixel_RGBA32 syscall
-        LOADI r0, 0      ; r0 = syscall number (set_pixel_RGBA32)
-        MOV r1, r7       ; r1 = x coordinate
-        MOV r2, r6       ; r2 = y coordinate
+    CLR r9               ; x = 0
+inner_loop:
+    LOADI r0, 0          ; syscall: set_pixel_RGBA32
+    MOV r1, r9           ; x
+    MOV r2, r8           ; y
+    MOV r3, r5           ; color
+    SYSCALL
 
-        ; Choose color based on x position
-        CMP r7, r14      ; Compare x with width/2
-        JL green_half     ; If x < width/2, use green
-        MOV r3, r8       ; Else use blue
-        JMP set_pixel
-    green_half:
-        MOV r3, r5       ; Use green color
+    INC r9
+    CMP r9, r14
+    JL inner_loop
 
-    set_pixel:
-        MOV r4, r14      ; r4 = original width (restore it)
-        SHL r4, 1        ; Multiply by 2 since we divided by 2 earlier
-
-        ; Call set_pixel syscall
-        SYSCALL
-
-        ; Move to next column
-        INC r7
-        CMP r7, r4       ; Compare x with full width
-        JL inner_loop
-
-    ; Move to next row
-    INC r6
-    CMP r6, r13          ; Compare y with height
+    INC r8
+    CMP r8, r13
     JL outer_loop
 
-    ; Halt the program
-    HLT
+    ; ==== Fade step ====
+    ; Extract R and G components from ARGB
+    MOV r10, r5          ; Copy color
+    SHR r10, 16          ; r10 = R component
+    ANDI r10, 0xFF       ; Mask to 8 bits
+
+    MOV r11, r5
+    SHR r11, 8           ; r11 = G component
+    ANDI r11, 0xFF       ; Mask to 8 bits
+
+    ; Update R (decrease) and G (increase)
+    CMPI r10, 0
+    JZ skip_red_decrease
+    DEC r10              ; decrease R
+skip_red_decrease:
+
+    CMPI r11, 255
+    JG skip_green_increase
+    INC r11              ; increase G
+skip_green_increase:
+
+    ; Rebuild ARGB
+    LOADI r12, 0xFF000000 ; Alpha channel
+
+    SHL r10, 16          ; Shift R into position
+    SHL r11, 8           ; Shift G into position
+
+    OR r12, r10
+    OR r12, r11          ; B stays zero
+
+    MOV r5, r12          ; Store new color
+
+    JMP main_loop
