@@ -112,7 +112,8 @@ public class CPU {
             words[i] = fetchWord();
         }
         instr.execute(this, words);
-        System.out.println(instructionSet.getName(InstructionUtils.extractOpcode(firstWord)));
+
+        //System.out.println(instructionSet.getName(InstructionUtils.extractOpcode(firstWord)));
     }
 
     // -------- Safety Check --------

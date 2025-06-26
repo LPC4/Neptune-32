@@ -20,14 +20,13 @@ import java.util.List;
 public class Main extends Application {
     private CPU cpu;
 
-    private static final int VRAM_PIXEL_SCALE = 4;
-
     @Override
     public void start(Stage primaryStage) {
         MemoryMap memoryMap = new NeptuneMemoryMap();
         InstructionSet instructionSet = new NeptuneInstructionSet();
         cpu = new CPU(instructionSet, memoryMap);
 
+        loadRom();
         loadProgram();
 
         while (!cpu.isHalt()) {
@@ -37,11 +36,21 @@ public class Main extends Application {
         visualise();
     }
 
+    private void loadRom() {
+        try (var stream = getClass().getResourceAsStream("/boot.rom.asm")) {
+            if (stream == null) throw new RuntimeException("Resource not found: test.asm");
+            List<String> lines = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8)).lines().toList();
+            new Assembler(cpu).assembleAndLoad(lines, cpu.getMemoryMap().getSyscallCodeStart());
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to load assembly program", e);
+        }
+    }
+
     private void loadProgram() {
         try (var stream = getClass().getResourceAsStream("/test.asm")) {
             if (stream == null) throw new RuntimeException("Resource not found: test.asm");
             List<String> lines = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8)).lines().toList();
-            new Assembler(cpu).assembleAndLoad(lines);
+            new Assembler(cpu).assembleAndLoad(lines, cpu.getMemoryMap().getRamStart());
         } catch (Exception e) {
             throw new RuntimeException("Failed to load assembly program", e);
         }

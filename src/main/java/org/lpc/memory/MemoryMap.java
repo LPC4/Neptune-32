@@ -3,6 +3,11 @@ package org.lpc.memory;
 public interface MemoryMap {
     int getBootRomStart();
     int getBootRomSize();
+    int getSyscallTableStart();
+    int getSyscallTableSize();
+    int getSyscallCodeStart();
+    int getSyscallCodeSize();
+
     int getRamStart();
     int getRamSize();
     int getVramStart();

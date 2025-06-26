@@ -1,6 +1,7 @@
 package org.lpc.instructions;
 
 import org.lpc.CPU;
+import org.lpc.memory.Memory;
 
 import java.util.Collections;
 import java.util.HashMap;
@@ -386,16 +387,83 @@ public class NeptuneInstructionSet implements InstructionSet {
         register("SYSCALL", new Instruction() {
             public void execute(CPU cpu, int[] words) {
                 int syscallNumber = cpu.getRegister(0);
-                switch (syscallNumber) {
-                    case 1:  // get VRAM info
-                        cpu.setRegister(1, cpu.getMemoryMap().getVramStart());
-                        cpu.setRegister(2, cpu.getMemoryMap().getVramSize());
-                        cpu.setRegister(3, cpu.getMemoryMap().getVramWidth());
-                        cpu.setRegister(4, cpu.getMemoryMap().getVramHeight());
-                        break;
-                    default:
-                        throw new IllegalStateException("Unknown syscall number: " + syscallNumber);
+
+                // Built-in syscall 100: get VRAM info
+                if (syscallNumber == 100) {
+                    cpu.setRegister(1, cpu.getMemoryMap().getVramStart());
+                    cpu.setRegister(2, cpu.getMemoryMap().getVramSize());
+                    cpu.setRegister(3, cpu.getMemoryMap().getVramWidth());
+                    cpu.setRegister(4, cpu.getMemoryMap().getVramHeight());
+                    return;
                 }
+                if (syscallNumber == 101) {
+                    System.out.println("PRINT: "+cpu.getRegister(1));
+                    return;
+                }
+
+                // For all other syscalls, use the ROM syscall table
+                int syscallTableAddr = cpu.getMemoryMap().getSyscallTableStart();
+                Memory rom = cpu.getMemory().getRom();
+
+                // Calculate the address of the syscall entry in the table
+                int tableEntryAddr = syscallTableAddr + (syscallNumber * 4);
+
+                // Verify the table entry address is within ROM bounds
+                if (!isAddressInMemory(tableEntryAddr, rom)) {
+                    throw new IllegalStateException("Syscall number " + syscallNumber + " is out of range");
+                }
+
+                // Read the target address from the syscall table
+                int targetAddress;
+                try {
+                    targetAddress = rom.readWord(tableEntryAddr);
+                } catch (Exception e) {
+                    throw new IllegalStateException("Failed to read syscall table entry for syscall " + syscallNumber, e);
+                }
+
+                // Verify the target address is valid (non-zero and within bounds)
+                if (targetAddress == 0) {
+                    throw new IllegalStateException("Syscall " + syscallNumber + " is not implemented (target address is 0)");
+                }
+
+                // Determine which memory region contains the target address
+                Memory targetMemory = resolveMemoryForAddress(cpu, targetAddress);
+                if (targetMemory == null) {
+                    throw new IllegalStateException("Syscall " + syscallNumber + " target address 0x" +
+                            Integer.toHexString(targetAddress) + " is not in any valid memory region");
+                }
+
+                // push the current PC and jump to the syscall handler
+                int returnAddress = cpu.getProgramCounter();
+                cpu.push(returnAddress);
+
+                // Jump to the syscall handler
+                cpu.setProgramCounter(targetAddress);
+            }
+
+            /**
+             * Helper method to check if an address is within a memory region's bounds
+             */
+            private boolean isAddressInMemory(int address, Memory memory) {
+                return address >= memory.getBaseAddress() &&
+                        address < memory.getBaseAddress() + memory.getSize();
+            }
+
+            /**
+             * Helper method to resolve which memory region contains the given address
+             */
+            private Memory resolveMemoryForAddress(CPU cpu, int address) {
+                Memory rom = cpu.getMemory().getRom();
+                Memory ram = cpu.getMemory().getRam();
+                Memory vram = cpu.getMemory().getVram();
+                Memory io = cpu.getMemory().getIo();
+
+                if (isAddressInMemory(address, rom)) return rom;
+                if (isAddressInMemory(address, ram)) return ram;
+                if (isAddressInMemory(address, vram)) return vram;
+                if (isAddressInMemory(address, io)) return io;
+
+                return null; // Address not in any memory region
             }
 
             public int[] encode(String args) {
