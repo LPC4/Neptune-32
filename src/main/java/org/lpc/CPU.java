@@ -1,6 +1,7 @@
 package org.lpc;
 
 import lombok.Getter;
+import lombok.Setter;
 import org.lpc.instructions.Instruction;
 import org.lpc.instructions.InstructionSet;
 import org.lpc.instructions.InstructionUtils;
@@ -9,12 +10,14 @@ import org.lpc.memory.MemoryBus;
 import org.lpc.memory.MemoryMap;
 
 @Getter
+@Setter
 public class CPU {
     private final int[] registers = new int[16];
 
     private int programCounter;
     private int stackPointer;
     private int heapPointer;
+    private boolean halt;
 
     private final Flags flags;
     private final MemoryBus memory;
@@ -26,6 +29,7 @@ public class CPU {
         this.memoryMap = memoryMap;
         this.flags = new Flags();
         this.memory = new MemoryBus(memoryMap);
+        this.halt = false;
 
         this.programCounter = memoryMap.getProgramStart();
         this.stackPointer = memoryMap.getStackStart();

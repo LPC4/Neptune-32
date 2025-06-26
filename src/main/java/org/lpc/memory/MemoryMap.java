@@ -22,8 +22,7 @@ public interface MemoryMap {
         RGBA32,
         RGB565,
         INDEXED_8BIT,
-        TILE_MAP,
-        // add more if needed
+        TILE_MAP
     }
 
     VramFormat getVramFormat();

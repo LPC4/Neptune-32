@@ -1,27 +1,24 @@
 package org.lpc.memory;
 
 public class NeptuneMemoryMap implements MemoryMap {
-    private static final int BOOT_ROM_START = 0x0000;
-    private static final int BOOT_ROM_SIZE = 0x1000;    // 4KB
+    private static final int BOOT_ROM_START = 0;
+    private static final int BOOT_ROM_SIZE = 4 * 1024;                       // 4 KB
 
-    private static final int RAM_START = BOOT_ROM_START + BOOT_ROM_SIZE;  // 0x1000
-    private static final int RAM_SIZE = 0x8000;         // 32KB total RAM region
+    private static final int RAM_START = BOOT_ROM_START + BOOT_ROM_SIZE;
+    private static final int RAM_SIZE = 32 * 1024;                            // 32 KB
 
-    // Hardcoded VRAM properties:
-    private static final int VRAM_WIDTH = 128;          // width in pixels
-    private static final int VRAM_HEIGHT = 128;          // height in pixels
-    private static final VramFormat VRAM_FORMAT = VramFormat.RGBA32; // 4 bytes per pixel
-
+    private static final int VRAM_WIDTH = 128;
+    private static final int VRAM_HEIGHT = 128;
+    private static final VramFormat VRAM_FORMAT = VramFormat.RGBA32;          // 4 bytes per pixel
+    // 128 * 128 * 4 = 64KB
     private static final int VRAM_SIZE = VRAM_WIDTH * VRAM_HEIGHT * bytesPerPixel(VRAM_FORMAT);
+    private static final int VRAM_START = RAM_START + RAM_SIZE;
 
-    private static final int VRAM_START = RAM_START + RAM_SIZE;           // right after RAM
+    private static final int IO_START = VRAM_START + VRAM_SIZE;
+    private static final int IO_SIZE = 4 * 1024;                              // 4 KB
 
-    private static final int IO_START = VRAM_START + VRAM_SIZE;           // right after VRAM
-    private static final int IO_SIZE = 0x1000;          // 4KB
-
-    // Stack and heap inside RAM
-    private static final int STACK_START = RAM_START + RAM_SIZE - 4;       // stack grows down from end of RAM
-    private static final int HEAP_START = RAM_START + 0x2000;              // heap starts 8KB into RAM (adjust as needed)
+    private static final int STACK_START = RAM_START + RAM_SIZE - 4;
+    private static final int HEAP_START = RAM_START + (8 * 1024);             // 8 KB into RAM
     private static final int HEAP_SIZE = STACK_START - HEAP_START;
 
     @Override

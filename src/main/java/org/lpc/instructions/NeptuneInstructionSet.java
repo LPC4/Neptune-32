@@ -59,8 +59,12 @@ import java.util.function.Predicate;
  * JMP   address          - Jump to address unconditionally
  * JZ    address          - Jump to address if zero flag set
  * JNZ   address          - Jump to address if zero flag not set
+ * JL    address          - Jump to address if negative flag set
+ * JG    address          - Jump to address if zero flag not set and negative flag not set
+ * JN    address          - Jump to address if negative flag set
+ * JP    address          - Jump to address if negative flag not set
  * CALL  address          - Push PC, jump to address (2-word instruction)
- * RET                   - Pop PC from stack and jump
+ * RET                    - Pop PC from stack and jump
  *
  * =====================================================
  * Stack Instructions:
@@ -72,7 +76,7 @@ import java.util.function.Predicate;
  * Data Movement Instructions:
  * =====================================================
  * MOV   rDest, rSrc      - Copy value from rSrc into rDest, update flags
- * LOADI rDest, imm      - Load immediate imm into rDest, update flags (2-word instruction)
+ * LOADI rDest, imm       - Load immediate imm into rDest, update flags (2-word instruction)
  * CLR   rDest            - Clear rDest (set to 0), update flags
  *
  * =====================================================
@@ -87,8 +91,9 @@ import java.util.function.Predicate;
  * System Instructions:
  * =====================================================
  * SYSCALL               - Executes system call specified by r0:
- *        1) Get VRAM info: r1 = start, r2 = size
+ *        1) Get VRAM info: r1 = start, r2 = size, r3 = width, r4 = height
  * NOP                   - No operation
+ * HLT                   - Halt the CPU
  *
  * =====================================================
  * Register Convention:
@@ -223,6 +228,15 @@ public class NeptuneInstructionSet implements InstructionSet {
         register("JMP", createJumpInstruction("JMP", cpu -> true));
         register("JZ", createJumpInstruction("JZ", cpu -> cpu.getFlags().isZero()));
         register("JNZ", createJumpInstruction("JNZ", cpu -> !cpu.getFlags().isZero()));
+        register("JN", createJumpInstruction("JN", cpu -> cpu.getFlags().isNegative()));
+        register("JP", createJumpInstruction("JP", cpu -> !cpu.getFlags().isNegative()));
+        // After CMP a, b: jump if a > b (result is positive and not zero)
+        register("JG", createJumpInstruction("JG", cpu ->
+                !cpu.getFlags().isZero() && !cpu.getFlags().isNegative()));
+        // After CMP a, b: jump if a < b (result is negative)
+        register("JL", createJumpInstruction("JL", cpu ->
+                cpu.getFlags().isNegative()));
+
 
         register("CALL", new Instruction() {
             @Override
@@ -376,7 +390,8 @@ public class NeptuneInstructionSet implements InstructionSet {
                     case 1:  // get VRAM info
                         cpu.setRegister(1, cpu.getMemoryMap().getVramStart());
                         cpu.setRegister(2, cpu.getMemoryMap().getVramSize());
-                        cpu.getFlags().update(cpu.getRegister(1));
+                        cpu.setRegister(3, cpu.getMemoryMap().getVramWidth());
+                        cpu.setRegister(4, cpu.getMemoryMap().getVramHeight());
                         break;
                     default:
                         throw new IllegalStateException("Unknown syscall number: " + syscallNumber);
@@ -395,6 +410,16 @@ public class NeptuneInstructionSet implements InstructionSet {
             @Override
             public int[] encode(String args) {
                 return new int[]{encodeInstruction(0, 0, getOpcode("NOP"))};
+            }
+        });
+
+        register("HLT", new Instruction() {
+            @Override
+            public void execute(CPU cpu, int[] words) { cpu.setHalt(true); }
+
+            @Override
+            public int[] encode(String args) {
+                return new int[]{encodeInstruction(0, 0, getOpcode("HLT"))};
             }
         });
     }

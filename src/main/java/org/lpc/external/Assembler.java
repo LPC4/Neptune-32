@@ -61,6 +61,14 @@ public class Assembler {
             }
         }
 
+        // Verify START label exists
+        if (!labelToAddress.containsKey("START")) {
+            throw new IllegalArgumentException("Program must contain a START label");
+        }
+
+        // Set program counter to START address
+        cpu.setProgramCounter(labelToAddress.get("START"));
+
         // Pass 2: Encode instructions, resolve labels
         for (SourceLine line : parsedLines) {
             String resolvedArgs = resolveArgs(line.args(), labelToAddress);

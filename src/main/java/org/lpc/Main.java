@@ -10,13 +10,11 @@ import org.lpc.memory.MemoryMap;
 import org.lpc.memory.NeptuneMemoryMap;
 import org.lpc.visualization.debug.CpuViewer;
 import org.lpc.visualization.debug.MemoryViewer;
-import org.lpc.visualization.vram.RGBA32Visualiser;
+import org.lpc.visualization.vram.RGBA32Viewer;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.List;
 
 public class Main extends Application {
@@ -32,12 +30,8 @@ public class Main extends Application {
 
         loadProgram();
 
-        while (true) {
-            try {
-                cpu.step();
-            } catch (Exception e) {
-                break;
-            }
+        while (!cpu.isHalt()) {
+            cpu.step();
         }
 
         visualise();
@@ -57,7 +51,7 @@ public class Main extends Application {
     private void visualise() {
         var memoryViewer = new MemoryViewer(cpu);
         var cpuViewer = new CpuViewer(cpu);
-        var vramViewer = new RGBA32Visualiser(cpu.getMemory(), cpu.getMemoryMap());
+        var vramViewer = new RGBA32Viewer(cpu.getMemory(), cpu.getMemoryMap());
 
         Stage cpuStage = new Stage();
         Stage memoryStage = new Stage();
@@ -79,12 +73,6 @@ public class Main extends Application {
         cpuStage.setX(memStage.getX() + memStage.getWidth() + 20);
         cpuStage.setY(memStage.getY());
         cpuStage.setWidth(700);
-
-        int vramWidth = cpu.getMemoryMap().getVramWidth();
-        int vramHeight = cpu.getMemoryMap().getVramHeight();
-
-        vramStage.setWidth(vramWidth * VRAM_PIXEL_SCALE + 16);
-        vramStage.setHeight(vramHeight * VRAM_PIXEL_SCALE + 39);
     }
 
     public static void main(String[] args) {
