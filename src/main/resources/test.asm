@@ -1,6 +1,4 @@
-; Neptune Assembly Program - Pixel Subroutine and Screen Fill
-; This program defines a subroutine to set pixel color at x,y coordinates
-; and uses it to fill the screen with green
+; Neptune Assembly Program - Half Green, Half Blue Screen Fill
 
 START:
     ; Get VRAM information
@@ -12,8 +10,12 @@ START:
     MOV r14, r3          ; r14 = width (save for syscall parameter)
     MOV r13, r4          ; r13 = height (save for loop comparison)
 
-    ; Set up green color
+    ; Calculate half width
+    SHR r14, 1           ; r14 = width/2 (halfway point)
+
+    ; Set up colors
     LOADI r5, 0xFF00FF00 ; Green color (ARGB: Alpha=FF, Red=00, Green=FF, Blue=00)
+    LOADI r8, 0xFFFF0000 ; Blue color (ARGB: Alpha=FF, Red=00, Green=00, Blue=FF)
 
     ; Fill screen using pixel syscall
     CLR r6               ; r6 = y coordinate (row)
@@ -21,24 +23,33 @@ outer_loop:
     CLR r7               ; r7 = x coordinate (column)
     inner_loop:
         ; Set parameters for set_pixel_RGBA32 syscall
-        ; Syscall parameters: r0=syscall_nr, r1=x, r2=y, r3=color, r4=width
-        LOADI r0, 0      ; r0 = syscall number (assuming set_pixel_RGBA32 is syscall 0)
+        LOADI r0, 0      ; r0 = syscall number (set_pixel_RGBA32)
         MOV r1, r7       ; r1 = x coordinate
         MOV r2, r6       ; r2 = y coordinate
-        MOV r3, r5       ; r3 = color
-        MOV r4, r14      ; r4 = width
+
+        ; Choose color based on x position
+        CMP r7, r14      ; Compare x with width/2
+        JL green_half     ; If x < width/2, use green
+        MOV r3, r8       ; Else use blue
+        JMP set_pixel
+    green_half:
+        MOV r3, r5       ; Use green color
+
+    set_pixel:
+        MOV r4, r14      ; r4 = original width (restore it)
+        SHL r4, 1        ; Multiply by 2 since we divided by 2 earlier
 
         ; Call set_pixel syscall
         SYSCALL
 
         ; Move to next column
         INC r7
-        CMP r7, r14      ; Compare x with width (use r14 since r3 was overwritten)
+        CMP r7, r4       ; Compare x with full width
         JL inner_loop
 
     ; Move to next row
     INC r6
-    CMP r6, r13          ; Compare y with height (use r13 since r4 was overwritten)
+    CMP r6, r13          ; Compare y with height
     JL outer_loop
 
     ; Halt the program

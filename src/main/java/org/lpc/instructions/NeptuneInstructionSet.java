@@ -30,6 +30,7 @@ import java.util.function.Predicate;
  * MODI  rDest, imm       - Modulo rDest by immediate, store in rDest, update flags (throws if modulo by zero)
  * INC   rDest            - Increment rDest by 1, update flags
  * DEC   rDest            - Decrement rDest by 1, update flags
+ * NEG   rDest            - Negate rDest, update flags
  *
  * =====================================================
  * Logical Instructions:
@@ -92,9 +93,9 @@ import java.util.function.Predicate;
  * System Instructions:
  * =====================================================
  * SYSCALL               - Executes system call specified by r0:
- *        1) Get VRAM info: r1 = start, r2 = size, r3 = width, r4 = height
  * NOP                   - No operation
  * HLT                   - Halt the CPU
+ * PRINT rSrc            - Print the value in rSrc
  *
  * =====================================================
  * Register Convention:
@@ -192,6 +193,13 @@ public class NeptuneInstructionSet implements InstructionSet {
             @Override
             protected int calculate(int value) {
                 return value - 1;
+            }
+        });
+
+        register("NEG", new UnaryRegisterInstruction("NEG") {
+            @Override
+            protected int calculate(int value) {
+                return -value;
             }
         });
     }
@@ -388,15 +396,7 @@ public class NeptuneInstructionSet implements InstructionSet {
             public void execute(CPU cpu, int[] words) {
                 int syscallNumber = cpu.getRegister(0);
 
-                // Built-in syscall 100: get VRAM info
                 if (syscallNumber == 100) {
-                    cpu.setRegister(1, cpu.getMemoryMap().getVramStart());
-                    cpu.setRegister(2, cpu.getMemoryMap().getVramSize());
-                    cpu.setRegister(3, cpu.getMemoryMap().getVramWidth());
-                    cpu.setRegister(4, cpu.getMemoryMap().getVramHeight());
-                    return;
-                }
-                if (syscallNumber == 101) {
                     System.out.println("PRINT: "+cpu.getRegister(1));
                     return;
                 }
@@ -488,6 +488,22 @@ public class NeptuneInstructionSet implements InstructionSet {
             @Override
             public int[] encode(String args) {
                 return new int[]{encodeInstruction(0, 0, getOpcode("HLT"))};
+            }
+        });
+
+        register("PRINT", new Instruction() {
+            @Override
+            public void execute(CPU cpu, int[] words) {
+                int register = InstructionUtils.extractRegister(words[0], 16);
+                int value = cpu.getRegister(register);
+                System.out.println("[CPU] Register " + register + " value: " + value);
+            }
+
+            @Override
+            public int[] encode(String args) {
+                String[] parts = splitArgs(args, 1);
+                int register = parseRegister(parts[0]);
+                return new int[]{encodeInstruction(register, 0, getOpcode("PRINT"))};
             }
         });
     }

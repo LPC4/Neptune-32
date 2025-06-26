@@ -28,7 +28,7 @@
 ;   - No bounds checking performed
 ;   - Invalid coordinates may corrupt memory
 ; =============================================================================
-syscall set_pixel_RGBA32:
+syscall 0 set_pixel_RGBA32:
     ; Preserve registers that will be modified
     PUSH r12                 ; Save temporary register 1
     PUSH r13                 ; Save temporary register 2
@@ -57,7 +57,7 @@ syscall set_pixel_RGBA32:
 
 
 ; =============================================================================
-; SYSCALL: get_neptune_vram_info (ID: 100)
+; SYSCALL: get_neptune_vram_info (ID: 1)
 ; =============================================================================
 ; Description: Returns Neptune system VRAM configuration information
 ;
@@ -82,7 +82,7 @@ syscall set_pixel_RGBA32:
 ;   - Total pixels = width * height = 128 * 128 = 16,384
 ;   - Memory layout: 16,384 pixels * 4 bytes = 65,536 bytes
 ; =============================================================================
-syscall get_neptune_vram_info:
+syscall 1 get_neptune_vram_info:
     ; Load Neptune VRAM configuration constants
     LOADI r1, 139264         ; VRAM base address (from memory map)
     LOADI r2, 65536          ; VRAM size: 128*128*4 bytes = 64KB

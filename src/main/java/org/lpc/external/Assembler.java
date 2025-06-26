@@ -1,5 +1,6 @@
 package org.lpc.external;
 
+import lombok.Getter;
 import org.lpc.CPU;
 import org.lpc.instructions.Instruction;
 import org.lpc.instructions.InstructionSet;
@@ -11,202 +12,147 @@ import java.util.*;
 public class Assembler {
     private final InstructionSet instructionSet;
     private final CPU cpu;
-
-    // List of syscall labels in order of appearance
-    private final List<String> syscallLabels = new ArrayList<>();
+    private final LabelManager labelManager;
+    private final SyscallManager syscallManager;
+    private final MemoryResolver memoryResolver;
 
     public Assembler(CPU cpu) {
         this.cpu = cpu;
         this.instructionSet = cpu.getInstructionSet();
+        this.labelManager = new LabelManager();
+        this.syscallManager = new SyscallManager(cpu);
+        this.memoryResolver = new MemoryResolver(cpu);
     }
 
     public void assembleAndLoad(List<String> lines, int baseAddress) {
-        Map<String, Integer> labelToAddress = new HashMap<>();
-        List<SourceLine> parsedLines = new ArrayList<>();
+        // Clear previous state
+        labelManager.clear();
+        syscallManager.clear();
 
+        // First pass - parse and collect labels/syscalls
+        List<SourceLine> parsedLines = parseSourceLines(lines, baseAddress);
+
+        // Set program counter if assembling to RAM
+        handleProgramStart(baseAddress);
+
+        // Second pass - encode and write to memory
+        writeInstructionsToMemory(parsedLines);
+
+        // Finalize syscall table
+        syscallManager.finalizeSyscallTable(labelManager);
+    }
+
+    private List<SourceLine> parseSourceLines(List<String> lines, int baseAddress) {
+        List<SourceLine> parsedLines = new ArrayList<>();
         int address = baseAddress;
 
-        // Pass 1: Parse lines, collect labels and calculate addresses
         for (String rawLine : lines) {
-            String line = rawLine.trim();
-            if (line.isEmpty() || line.startsWith("#") || line.startsWith(";")) continue;
-
-            int commentIdx = Math.min(
-                    line.indexOf(';') == -1 ? line.length() : line.indexOf(';'),
-                    line.indexOf('#') == -1 ? line.length() : line.indexOf('#')
-            );
-            line = line.substring(0, commentIdx).trim();
-
+            String line = cleanLine(rawLine);
             if (line.isEmpty()) continue;
 
-            // Handle "syscall label:" syntax
-            if (line.startsWith("syscall ")) {
-                String label = line.substring(8).trim();
-                if (!label.endsWith(":")) {
-                    throw new IllegalArgumentException("Syscall label must end with ':'");
-                }
-                label = label.substring(0, label.length() - 1).trim();
-
-                if (labelToAddress.containsKey(label)) {
-                    throw new IllegalArgumentException("Duplicate label: " + label);
-                }
-                labelToAddress.put(label, address);
-                syscallLabels.add(label);
+            // Handle syscalls
+            if (syscallManager.processSyscallDeclaration(line, address)) {
+                labelManager.addLabel(syscallManager.getLastLabel(), address);
                 continue;
             }
 
-            // Handle normal labels
-            if (line.endsWith(":")) {
-                String label = line.substring(0, line.length() - 1).trim();
-                if (labelToAddress.containsKey(label)) {
-                    throw new IllegalArgumentException("Duplicate label: " + label);
-                }
-                labelToAddress.put(label, address);
+            // Handle regular labels
+            if (labelManager.processLabelDeclaration(line, address)) {
                 continue;
             }
 
-            // Parse instruction line
-            int spaceIdx = line.indexOf(' ');
-            String mnemonic = (spaceIdx == -1) ? line : line.substring(0, spaceIdx).toUpperCase();
-            String args = (spaceIdx == -1) ? "" : line.substring(spaceIdx + 1).trim();
-
-            Byte opcode = instructionSet.getOpcode(mnemonic);
-            if (opcode == null) {
-                throw new IllegalArgumentException("Unknown instruction: '" + line + "'");
-            }
-
-            Instruction instr = instructionSet.getInstruction(opcode & 0xFF);
-            if (instr == null) {
-                throw new IllegalStateException("No implementation for opcode: " + opcode);
-            }
-
-            parsedLines.add(new SourceLine(address, mnemonic, args, instr));
-            address += instr.getWordCount() * 4;
+            // Parse regular instructions
+            InstructionInfo info = parseInstruction(line);
+            parsedLines.add(new SourceLine(address, info.mnemonic(), info.args(), info.instruction()));
+            address += info.instruction().getWordCount() * 4;
         }
 
-        // Optional: If assembling a program (RAM), set PC to label START
-        if (isRamAddress(baseAddress)) {
-            if (!labelToAddress.containsKey("START")) {
+        return parsedLines;
+    }
+
+    private String cleanLine(String line) {
+        line = line.trim();
+        if (line.isEmpty() || line.startsWith("#") || line.startsWith(";")) return "";
+
+        int commentIdx = Math.min(
+                line.indexOf(';') == -1 ? line.length() : line.indexOf(';'),
+                line.indexOf('#') == -1 ? line.length() : line.indexOf('#')
+        );
+        return line.substring(0, commentIdx).trim();
+    }
+
+    private InstructionInfo parseInstruction(String line) {
+        int spaceIdx = line.indexOf(' ');
+        String mnemonic = (spaceIdx == -1) ? line : line.substring(0, spaceIdx).toUpperCase();
+        String args = (spaceIdx == -1) ? "" : line.substring(spaceIdx + 1).trim();
+
+        Byte opcode = instructionSet.getOpcode(mnemonic);
+        if (opcode == null) {
+            throw new IllegalArgumentException("Unknown instruction: '" + line + "'");
+        }
+
+        Instruction instr = instructionSet.getInstruction(opcode & 0xFF);
+        if (instr == null) {
+            throw new IllegalStateException("No implementation for opcode: " + opcode);
+        }
+
+        return new InstructionInfo(mnemonic, args, instr);
+    }
+
+    private void handleProgramStart(int baseAddress) {
+        if (memoryResolver.isRamAddress(baseAddress)) {
+            if (!labelManager.containsLabel("START")) {
                 throw new IllegalArgumentException("Program must contain a START label");
             }
-            cpu.setProgramCounter(labelToAddress.get("START"));
+            cpu.setProgramCounter(labelManager.getAddress("START"));
         }
+    }
 
-        // Pass 2: Encode instructions and write to memory
+    private void writeInstructionsToMemory(List<SourceLine> parsedLines) {
         for (SourceLine line : parsedLines) {
-            String resolvedArgs = resolveArgs(line.args(), labelToAddress);
-
-            int[] words;
-            try {
-                words = line.instruction().encode(resolvedArgs);
-            } catch (Exception e) {
-                throw new RuntimeException("Failed to encode " + line.mnemonic() + " " + line.args(), e);
-            }
+            String resolvedArgs = labelManager.resolveArgs(line.args());
+            int[] words = line.instruction().encode(resolvedArgs);
 
             int addr = line.address();
-            Memory targetMem = resolveMemoryForAddress(addr);
+            Memory targetMem = memoryResolver.resolve(addr);
 
             for (int word : words) {
                 targetMem.writeWord(addr, word);
                 addr += 4;
             }
         }
-
-        // Write the syscall table at syscallTableStart in ROM
-        if (!syscallLabels.isEmpty()) {
-            int syscallTableAddr = cpu.getMemoryMap().getSyscallTableStart();
-            Memory rom = cpu.getMemory().getRom();
-
-            for (int i = 0; i < syscallLabels.size(); i++) {
-                String label = syscallLabels.get(i);
-                Integer target = labelToAddress.get(label);
-                if (target == null) {
-                    throw new IllegalStateException("Label not found for syscall: " + label);
-                }
-                rom.writeWord(syscallTableAddr + i * 4, target);
-            }
-        }
-
-        // Output syscall information after assembly
-        outputSyscallInfo(labelToAddress);
     }
 
-    /**
-     * Outputs information about the syscalls that were assembled
-     */
-    private void outputSyscallInfo(Map<String, Integer> labelToAddress) {
-        if (syscallLabels.isEmpty()) {
-            System.out.println("No syscalls found in assembly.");
-            return;
-        }
+    // Helper records
+    private record SourceLine(int address, String mnemonic, String args, Instruction instruction) {}
+    private record InstructionInfo(String mnemonic, String args, Instruction instruction) {}
+}
 
-        System.out.println("\n=== SYSCALL TABLE ===");
-        int syscallTableAddr = cpu.getMemoryMap().getSyscallTableStart();
+// Label Management Component
+class LabelManager {
+    private final Map<String, Integer> labelToAddress = new HashMap<>();
 
-        System.out.printf("Syscall table base address: 0x%08X\n", syscallTableAddr);
-        System.out.printf("Number of syscalls: %d\n\n", syscallLabels.size());
-
-        System.out.println("Syscall ID | Label           | Target Address | Table Entry Address");
-        System.out.println("-----------|-----------------|----------------|-------------------");
-
-        for (int i = 0; i < syscallLabels.size(); i++) {
-            String label = syscallLabels.get(i);
-            Integer targetAddr = labelToAddress.get(label);
-            int tableEntryAddr = syscallTableAddr + i * 4;
-
-            System.out.printf("%-10d | %-15s | 0x%08X     | 0x%08X\n",
-                    i, label, targetAddr, tableEntryAddr);
-        }
-
-        System.out.println("\n=== SYSCALL DETAILS ===");
-        for (int i = 0; i < syscallLabels.size(); i++) {
-            String label = syscallLabels.get(i);
-            Integer targetAddr = labelToAddress.get(label);
-            Memory targetMem = resolveMemoryForAddress(targetAddr);
-            String memoryType = getMemoryTypeName(targetAddr);
-
-            System.out.printf("Syscall %d (%s):\n", i, label);
-            System.out.printf("  - Target address: 0x%08X\n", targetAddr);
-            System.out.printf("  - Memory region: %s\n", memoryType);
-            System.out.printf("  - Table entry: [0x%08X] = 0x%08X\n\n",
-                    syscallTableAddr + i * 4, targetAddr);
-        }
+    public void clear() {
+        labelToAddress.clear();
     }
 
-    /**
-     * Returns a human-readable name for the memory region containing the given address
-     */
-    private String getMemoryTypeName(int addr) {
-        MemoryBus mem = cpu.getMemory();
-        if (inRange(addr, mem.getRom())) return "ROM";
-        if (inRange(addr, mem.getRam())) return "RAM";
-        if (inRange(addr, mem.getVram())) return "VRAM";
-        if (inRange(addr, mem.getIo())) return "I/O";
-        return "UNKNOWN";
-    }
-
-    /**
-     * Public method to get syscall information after assembly
-     */
-    public List<SyscallInfo> getSyscallInfo() {
-        List<SyscallInfo> info = new ArrayList<>();
-        int syscallTableAddr = cpu.getMemoryMap().getSyscallTableStart();
-
-        for (int i = 0; i < syscallLabels.size(); i++) {
-            String label = syscallLabels.get(i);
-            // Note: This would need labelToAddress to be instance variable to work properly
-            // For now, this is a structure to show what could be returned
-            info.add(new SyscallInfo(i, label, 0, syscallTableAddr + i * 4));
+    public boolean processLabelDeclaration(String line, int address) {
+        if (line.endsWith(":")) {
+            String label = line.substring(0, line.length() - 1).trim();
+            addLabel(label, address);
+            return true;
         }
-        return info;
+        return false;
     }
 
-    /**
-     * Record to hold syscall information
-     */
-    public record SyscallInfo(int id, String label, int targetAddress, int tableEntryAddress) {}
+    public void addLabel(String label, int address) {
+        if (labelToAddress.containsKey(label)) {
+            throw new IllegalArgumentException("Duplicate label: " + label);
+        }
+        labelToAddress.put(label, address);
+    }
 
-    private String resolveArgs(String args, Map<String, Integer> labelToAddress) {
+    public String resolveArgs(String args) {
         if (args.isEmpty()) return "";
 
         String[] parts = args.split(",");
@@ -219,7 +165,96 @@ public class Assembler {
         return String.join(",", parts);
     }
 
-    private Memory resolveMemoryForAddress(int addr) {
+    public boolean containsLabel(String label) {
+        return labelToAddress.containsKey(label);
+    }
+
+    public int getAddress(String label) {
+        return labelToAddress.get(label);
+    }
+}
+
+// Syscall Management Component
+class SyscallManager {
+    private final CPU cpu;
+    private final Map<Integer, String> syscallMap = new HashMap<>();
+    @Getter
+    private String lastLabel;
+
+    public SyscallManager(CPU cpu) {
+        this.cpu = cpu;
+    }
+
+    public void clear() {
+        syscallMap.clear();
+        lastLabel = null;
+    }
+
+    public boolean processSyscallDeclaration(String line, int address) {
+        if (!line.startsWith("syscall ")) return false;
+
+        String rest = line.substring(8).trim();
+        if (!rest.endsWith(":")) {
+            throw new IllegalArgumentException("Syscall label must end with ':'");
+        }
+
+        String[] parts = rest.substring(0, rest.length() - 1).trim().split("\\s+");
+        if (parts.length != 2) {
+            throw new IllegalArgumentException("Syscall syntax must be: syscall number label:");
+        }
+
+        try {
+            int syscallNum = Integer.parseInt(parts[0]);
+            String label = parts[1];
+
+            if (syscallMap.containsKey(syscallNum)) {
+                throw new IllegalArgumentException("Duplicate syscall number: " + syscallNum);
+            }
+
+            syscallMap.put(syscallNum, label);
+            lastLabel = label;
+            return true;
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("Invalid syscall number: " + parts[0]);
+        }
+    }
+
+    public void finalizeSyscallTable(LabelManager labelManager) {
+        if (syscallMap.isEmpty()) return;
+
+        int syscallTableAddr = cpu.getMemoryMap().getSyscallTableStart();
+        Memory rom = cpu.getMemory().getRom();
+
+        // Find the highest syscall number to determine table size
+        int maxSyscallNum = syscallMap.keySet().stream().max(Integer::compare).orElse(0);
+
+        // Initialize all entries to 0 first
+        for (int i = 0; i <= maxSyscallNum; i++) {
+            rom.writeWord(syscallTableAddr + i * 4, 0);
+        }
+
+        // Write the defined syscalls
+        for (Map.Entry<Integer, String> entry : syscallMap.entrySet()) {
+            int syscallNum = entry.getKey();
+            String label = entry.getValue();
+            Integer target = labelManager.getAddress(label);
+            if (target == null) {
+                throw new IllegalStateException("Label not found for syscall: " + label);
+            }
+            rom.writeWord(syscallTableAddr + syscallNum * 4, target);
+        }
+    }
+}
+
+// Memory Resolution Component
+class MemoryResolver {
+    private final CPU cpu;
+
+    public MemoryResolver(CPU cpu) {
+        this.cpu = cpu;
+    }
+
+    public Memory resolve(int addr) {
         MemoryBus mem = cpu.getMemory();
         if (inRange(addr, mem.getRom())) return mem.getRom();
         if (inRange(addr, mem.getRam())) return mem.getRam();
@@ -228,13 +263,11 @@ public class Assembler {
         throw new IllegalArgumentException(String.format("Address 0x%08X does not map to any memory region", addr));
     }
 
-    private boolean inRange(int addr, Memory mem) {
-        return addr >= mem.getBaseAddress() && addr < mem.getBaseAddress() + mem.getSize();
-    }
-
-    private boolean isRamAddress(int addr) {
+    public boolean isRamAddress(int addr) {
         return inRange(addr, cpu.getMemory().getRam());
     }
 
-    private record SourceLine(int address, String mnemonic, String args, Instruction instruction) {}
+    private boolean inRange(int addr, Memory mem) {
+        return addr >= mem.getBaseAddress() && addr < mem.getBaseAddress() + mem.getSize();
+    }
 }
