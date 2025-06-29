@@ -13,8 +13,7 @@
 9. [Instruction Set](#instruction-set)
 10. [Development Notes](#development-notes)
 11. [License](#license)
-12. [Author](#author)
-13. [Contributions](#contributions)
+12. [Contributions](#contributions)
 
 ---
 
@@ -141,9 +140,6 @@ Word 2: Immediate value (32-bit literal/address)
 ### Timer Device
 
 * Provides tick counts or can be expanded for interrupts
-* Offset mappings:
-    * +0x00: Current tick count (RO)
-    * +0x04: Control (WO)
 
 ---
 
@@ -163,7 +159,7 @@ address = VRAM_BASE + (y * 128 + x) * 4
 Each pixel is stored as 4 consecutive bytes:
 
 ```
-| +0: Red | +1: Green | +2: Blue | +3: Alpha |
+| +0: Alpha | +1: Blue | +2: Green | +3: Red |
 ```
 
 * Write to VRAM to update the framebuffer
