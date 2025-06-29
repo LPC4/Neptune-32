@@ -4,11 +4,9 @@ import lombok.Getter;
 import lombok.Setter;
 import org.lpc.instructions.Instruction;
 import org.lpc.instructions.InstructionSet;
-import org.lpc.instructions.InstructionUtils;
 import org.lpc.memory.Flags;
 import org.lpc.memory.MemoryBus;
 import org.lpc.memory.MemoryMap;
-import org.lpc.memory.io.KeyboardInputDevice;
 
 @Getter
 @Setter

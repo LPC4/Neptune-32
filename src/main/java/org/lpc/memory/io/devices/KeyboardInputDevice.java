@@ -1,4 +1,4 @@
-package org.lpc.memory.io;
+package org.lpc.memory.io.devices;
 
 import javafx.scene.Scene;
 import javafx.scene.input.KeyEvent;
@@ -9,19 +9,22 @@ import java.util.LinkedList;
 import java.util.Map;
 
 /**
- * Keyboard Input Device - Buffers keyboard input from JavaFX scene
+ * KeyboardInputDevice - Memory-mapped keyboard input buffer for CPU interaction.
+ * Captures keypresses from a JavaFX scene and exposes them via registers.
+ * On buffer overflow (32 bytes) it removes last saved input, buffer is saved externally.
  *
  * Memory Map (16 bytes total):
- * +0x00 FIRST_CHAR   [RO] - ASCII code of oldest character in buffer (0 if empty)
- * +0x04 BUFFER_READY [RO] - 1 if buffer has ≥2 chars, 0 otherwise
- * +0x08 CURRENT_CHAR [RO] - ASCII code of most recently pressed key
- * +0x0C CONTROL      [WO] - Write commands to control the buffer:
- *                           - 1: Remove oldest character (consume)
- *                           - 2: Clear entire buffer
- *                           - 3: Reset all registers
+ * +0x00 FIRST_CHAR    [RO] - ASCII code of the oldest character in the buffer (0 if empty)
+ * +0x04 BUFFER_READY  [RO] - 1 if buffer has ≥ 2 characters, 0 otherwise
+ * +0x08 CURRENT_CHAR  [RO] - ASCII code of the most recently pressed key (0 if empty)
+ * +0x0C CONTROL       [WO] - Write commands to control the buffer:
+ *                            - 1: Consume oldest character (remove FIRST_CHAR)
+ *                            - 2: Clear the entire buffer
+ *                            - 3: Reset buffer and registers
  */
 public class KeyboardInputDevice implements IODevice {
     public static final int SIZE = 16;
+    public static final int MAX_BUFFER_SIZE = 32;
 
     // Register offsets
     public static final int OFFSET_FIRST_CHAR = 0;
@@ -35,7 +38,7 @@ public class KeyboardInputDevice implements IODevice {
     private static final int CTRL_RESET_REGISTERS = 3;
 
     private final int baseAddress;
-    private final LinkedList<Integer> inputBuffer = new LinkedList<>();
+    private final LinkedList<Character> inputBuffer = new LinkedList<>();
     private final int[] registers = new int[SIZE / 4];
 
     public KeyboardInputDevice(int baseAddress, Scene scene) {
@@ -49,13 +52,23 @@ public class KeyboardInputDevice implements IODevice {
             char keyChar = mapKeyEventToChar(event);
             if (keyChar != 0) {
                 synchronized (inputBuffer) {
-                    inputBuffer.add((int) keyChar);
-                    updateRegisters();
+                    handleKeyPress(keyChar);
                 }
             }
             event.consume();
         });
     }
+
+    private void handleKeyPress(char keyChar) {
+        synchronized (inputBuffer) {
+            if (inputBuffer.size() >= MAX_BUFFER_SIZE) {
+                inputBuffer.removeFirst();
+            }
+            inputBuffer.add(keyChar);
+            updateRegisters();
+        }
+    }
+
 
     private char mapKeyEventToChar(KeyEvent event) {
         return switch (event.getCode()) {

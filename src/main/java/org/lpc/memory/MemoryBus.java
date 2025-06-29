@@ -1,7 +1,6 @@
 package org.lpc.memory;
 
 import lombok.Getter;
-import org.lpc.memory.io.KeyboardInputDevice;
 import org.lpc.memory.io.IODeviceManager;
 
 @Getter

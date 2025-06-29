@@ -11,10 +11,12 @@ import org.lpc.instructions.InstructionSet;
 import org.lpc.instructions.NeptuneInstructionSet;
 import org.lpc.memory.MemoryMap;
 import org.lpc.memory.NeptuneMemoryMap;
-import org.lpc.memory.io.ConsoleOutputDevice;
 import org.lpc.memory.io.IODeviceManager;
-import org.lpc.memory.io.KeyboardInputDevice;
+import org.lpc.memory.io.devices.ConsoleOutputDevice;
+import org.lpc.memory.io.devices.KeyboardInputDevice;
+import org.lpc.memory.io.devices.TimerDevice;
 import org.lpc.visualization.debug.CpuViewer;
+import org.lpc.visualization.debug.ExternalConsole;
 import org.lpc.visualization.debug.MemoryViewer;
 import org.lpc.visualization.vram.RGBA32Viewer;
 
@@ -27,22 +29,19 @@ import java.util.Objects;
 public class Main extends Application {
     private CPU cpu;
     private Scene ioScene;
+    private ExternalConsole externalConsole;
 
     @Override
     public void start(Stage primaryStage) {
+        externalConsole = new ExternalConsole();
+        externalConsole.start();
+
         initCpu();
         loadBootRom();
         loadUserProgram();
         createAndShowViewers();
-        addIoDevices();
-        startCpuExecutionThread();
-    }
-
-    private void addIoDevices() {
-        IODeviceManager io = cpu.getMemory().getIo();
-        io.register(new KeyboardInputDevice(io.getBaseAddress() + io.getCurrentOffset(), Objects.requireNonNull(ioScene)));
-        io.register(new ConsoleOutputDevice(io.getBaseAddress() + io.getCurrentOffset()));
-        io.printDevices();
+        registerIoDevices();
+        startCpuThread();
     }
 
     private void initCpu() {
@@ -52,17 +51,19 @@ public class Main extends Application {
     }
 
     private void loadBootRom() {
-        assembleAndLoadResource("/boot.rom.asm", cpu.getMemoryMap().getSyscallCodeStart());
+        assembleAndLoad("/rom/boot.rom.asm", cpu.getMemoryMap().getSyscallCodeStart());
     }
 
     private void loadUserProgram() {
-        assembleAndLoadResource("/keyboard_input.asm", cpu.getMemoryMap().getRamStart());
+        assembleAndLoad("/example_programs/keyboard_input.asm", cpu.getMemoryMap().getRamStart());
     }
 
-    private void assembleAndLoadResource(String resourcePath, int loadAddress) {
+    private void assembleAndLoad(String resourcePath, int loadAddress) {
         try (var stream = getClass().getResourceAsStream(resourcePath)) {
             if (stream == null) throw new RuntimeException("Resource not found: " + resourcePath);
-            List<String> lines = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8)).lines().toList();
+            List<String> lines = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))
+                    .lines()
+                    .toList();
             new Assembler(cpu).assembleAndLoad(lines, loadAddress);
         } catch (Exception e) {
             throw new RuntimeException("Failed to load resource: " + resourcePath, e);
@@ -70,9 +71,9 @@ public class Main extends Application {
     }
 
     private void createAndShowViewers() {
-        var cpuViewer = new CpuViewer(cpu);
-        var memoryViewer = new MemoryViewer(cpu);
-        var vramViewer = new RGBA32Viewer(cpu.getMemory(), cpu.getMemoryMap());
+        CpuViewer cpuViewer = new CpuViewer(cpu);
+        MemoryViewer memoryViewer = new MemoryViewer(cpu);
+        RGBA32Viewer vramViewer = new RGBA32Viewer(cpu.getMemory(), cpu.getMemoryMap());
 
         Stage cpuStage = new Stage();
         Stage memoryStage = new Stage();
@@ -82,29 +83,41 @@ public class Main extends Application {
         memoryViewer.start(memoryStage);
         vramViewer.start(vramStage);
 
-        ioScene = vramStage.getScene();
+        ioScene = externalConsole.getScene();
 
-        arrangeStages(memoryStage, cpuStage);
+        positionStages(memoryStage, cpuStage, vramStage);
     }
 
-    private void arrangeStages(Stage memoryStage, Stage cpuStage) {
+    private void positionStages(Stage memoryStage, Stage cpuStage, Stage vramStage) {
         Rectangle2D bounds = Screen.getPrimary().getVisualBounds();
 
-        memoryStage.setX(bounds.getMinX() + 50);
+        memoryStage.setX(bounds.getMinX());
         memoryStage.setY(bounds.getMinY() + 50);
 
-        cpuStage.setX(memoryStage.getX() + memoryStage.getWidth() + 20);
+        cpuStage.setX(bounds.getMaxX() - cpuStage.getWidth());
         cpuStage.setY(memoryStage.getY());
-        cpuStage.setWidth(700);
+
+        vramStage.setY(memoryStage.getY());
     }
 
-    private void startCpuExecutionThread() {
+    private void registerIoDevices() {
+        IODeviceManager io = cpu.getMemory().getIo();
+
+        io.register(new KeyboardInputDevice(io.getBaseAddress() + io.getCurrentOffset(), Objects.requireNonNull(ioScene)));
+        io.register(new ConsoleOutputDevice(io.getBaseAddress() + io.getCurrentOffset()));
+        io.register(new TimerDevice(io.getBaseAddress() + io.getCurrentOffset()));
+
+        io.printDevices();
+    }
+
+    private void startCpuThread() {
         Thread cpuThread = new Thread(() -> {
             while (!cpu.isHalt()) {
                 cpu.step();
             }
             Platform.exit();
         }, "CPU-Execution-Thread");
+
         cpuThread.setDaemon(true);
         cpuThread.start();
     }

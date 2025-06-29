@@ -8,31 +8,20 @@ import javafx.scene.Scene;
 import javafx.scene.control.Label;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
-import javafx.scene.text.Font;
-import javafx.scene.text.FontWeight;
 import javafx.stage.Stage;
 import org.lpc.CPU;
+import org.lpc.util.Colors;
+import org.lpc.util.Fonts;
+import org.lpc.util.Styles;
 
 public class CpuViewer {
     private final CPU cpu;
     private final Label[] registerLabels = new Label[16];
-    private final Label programCounterLabel = new Label();
-    private final Label stackPointerLabel = new Label();
-    private final Label heapPointerLabel = new Label();
-    private final Label flagsLabel = new Label();
+    private final Label programCounterLabel = Styles.valueLabel();
+    private final Label stackPointerLabel = Styles.valueLabel();
+    private final Label heapPointerLabel = Styles.valueLabel();
+    private final Label flagsLabel = Styles.flagLabel();
     private long lastUpdate = 0;
-
-    private static final Font TITLE_FONT = Font.font("Segoe UI", FontWeight.BOLD, 20);
-    private static final Font SECTION_FONT = Font.font("Segoe UI", FontWeight.SEMI_BOLD, 14);
-    private static final Font LABEL_FONT = Font.font("Consolas", FontWeight.NORMAL, 12);
-    private static final Font VALUE_FONT = Font.font("Consolas", FontWeight.BOLD, 12);
-
-    private static final String BACKGROUND_COLOR = "#f8f9fa";
-    private static final String CARD_COLOR = "#ffffff";
-    private static final String BORDER_COLOR = "#e9ecef";
-    private static final String ACCENT_COLOR = "#007bff";
-    private static final String TEXT_COLOR = "#495057";
-    private static final String VALUE_COLOR = "#28a745";
 
     public CpuViewer(CPU cpu) {
         this.cpu = cpu;
@@ -41,9 +30,9 @@ public class CpuViewer {
     public void start(Stage stage) {
         VBox root = new VBox(15);
         root.setPadding(new Insets(20));
-        root.setStyle("-fx-background-color: " + BACKGROUND_COLOR + ";");
+        root.setStyle("-fx-background-color: " + Colors.BACKGROUND + ";");
         root.getChildren().addAll(
-                createTitle(),
+                Styles.title("CPU State Monitor"),
                 createRegistersSection(),
                 createControlRegistersSection(),
                 createFlagsSection()
@@ -52,7 +41,7 @@ public class CpuViewer {
         startAutoRefresh();
 
         stage.setTitle("CPU Viewer - Debug Monitor");
-        stage.setScene(new Scene(root, 480, 650));
+        stage.setScene(new Scene(root, 700, 650));
         stage.show();
     }
 
@@ -69,29 +58,19 @@ public class CpuViewer {
         refreshTimer.start();
     }
 
-    private Label createTitle() {
-        Label title = new Label("CPU State Monitor");
-        title.setFont(TITLE_FONT);
-        title.setTextFill(Color.web(TEXT_COLOR));
-        title.setAlignment(Pos.CENTER);
-        return title;
-    }
-
     private VBox createRegistersSection() {
         VBox section = new VBox(10);
-        Label header = new Label("📊 General Purpose Registers");
-        header.setFont(SECTION_FONT);
-        header.setTextFill(Color.web(ACCENT_COLOR));
+        section.getChildren().addAll(Styles.sectionHeader("📊 General Purpose Registers"));
 
         GridPane grid = new GridPane();
         grid.setHgap(15);
         grid.setVgap(8);
         grid.setPadding(new Insets(15));
-        grid.setStyle(cardStyle());
+        grid.setStyle(Styles.cardStyle());
 
         for (int i = 0; i < 16; i++) {
-            Label name = createStyledLabel(String.format("R%02d", i));
-            Label value = createValueLabel();
+            Label name = Styles.monoLabel(String.format("R%02d", i));
+            Label value = Styles.valueLabel();
             registerLabels[i] = value;
 
             int row = i / 4;
@@ -101,21 +80,19 @@ public class CpuViewer {
             grid.add(value, col + 1, row);
         }
 
-        section.getChildren().addAll(header, grid);
+        section.getChildren().add(grid);
         return section;
     }
 
     private VBox createControlRegistersSection() {
         VBox section = new VBox(10);
-        Label header = new Label("🎛 Control Registers");
-        header.setFont(SECTION_FONT);
-        header.setTextFill(Color.web(ACCENT_COLOR));
+        section.getChildren().addAll(Styles.sectionHeader("🎛 Control Registers"));
 
         GridPane grid = new GridPane();
         grid.setHgap(15);
         grid.setVgap(12);
         grid.setPadding(new Insets(15));
-        grid.setStyle(cardStyle());
+        grid.setStyle(Styles.cardStyle());
 
         addControlRow(grid, "Program Counter (PC):", programCounterLabel, 0);
         addControlRow(grid, "Stack Pointer (SP):", stackPointerLabel, 1);
@@ -127,94 +104,34 @@ public class CpuViewer {
         c2.setHgrow(Priority.ALWAYS);
         grid.getColumnConstraints().addAll(c1, c2);
 
-        section.getChildren().addAll(header, grid);
+        section.getChildren().add(grid);
         return section;
     }
 
     private VBox createFlagsSection() {
         VBox section = new VBox(10);
-        Label header = new Label("🚩 Status Flags");
-        header.setFont(SECTION_FONT);
-        header.setTextFill(Color.web(ACCENT_COLOR));
+        section.getChildren().addAll(Styles.sectionHeader("🚩 Status Flags"));
 
         HBox container = new HBox(10);
         container.setPadding(new Insets(15));
         container.setAlignment(Pos.CENTER_LEFT);
-        container.setStyle(cardStyle());
+        container.setStyle(Styles.cardStyle());
 
-        Label label = createStyledLabel("Flags:");
-
-        flagsLabel.setFont(Font.font("Consolas", FontWeight.BOLD, 14));
-        flagsLabel.setTextFill(Color.web(VALUE_COLOR));
-        flagsLabel.setStyle(flagDefaultStyle());
-
-        Label legend = new Label("(Z=Zero, N=Negative, C=Carry, O=Overflow)");
-        legend.setFont(Font.font("Segoe UI", FontWeight.NORMAL, 10));
-        legend.setTextFill(Color.web("#6c757d"));
-
+        Label label = Styles.monoLabel("Flags:");
         container.getChildren().addAll(label, flagsLabel);
 
-        section.getChildren().addAll(header, container, legend);
+        Label legend = new Label("(Z=Zero, N=Negative, C=Carry, O=Overflow)");
+        legend.setFont(Fonts.SECTION);
+        legend.setTextFill(Color.web(Colors.MUTED));
+
+        section.getChildren().addAll(container, legend);
         return section;
     }
 
     private void addControlRow(GridPane grid, String name, Label valueLabel, int row) {
-        Label nameLabel = createStyledLabel(name);
-        valueLabel.setFont(VALUE_FONT);
-        valueLabel.setTextFill(Color.web(VALUE_COLOR));
-        valueLabel.setStyle(valueLabelStyle());
-
+        Label nameLabel = Styles.monoLabel(name);
         grid.add(nameLabel, 0, row);
         grid.add(valueLabel, 1, row);
-    }
-
-    private Label createStyledLabel(String text) {
-        Label label = new Label(text);
-        label.setFont(LABEL_FONT);
-        label.setTextFill(Color.web(TEXT_COLOR));
-        return label;
-    }
-
-    private Label createValueLabel() {
-        Label label = new Label();
-        label.setFont(VALUE_FONT);
-        label.setTextFill(Color.web(VALUE_COLOR));
-        label.setStyle(valueLabelStyle());
-        return label;
-    }
-
-    private String cardStyle() {
-        return "-fx-background-color: " + CARD_COLOR + "; " +
-                "-fx-border-color: " + BORDER_COLOR + "; " +
-                "-fx-border-width: 1px; " +
-                "-fx-border-radius: 8px; " +
-                "-fx-background-radius: 8px;";
-    }
-
-    private String valueLabelStyle() {
-        return "-fx-background-color: #f8f9fa; " +
-                "-fx-padding: 6px 12px; " +
-                "-fx-border-radius: 4px; " +
-                "-fx-background-radius: 4px; " +
-                "-fx-min-width: 100px;";
-    }
-
-    private String flagDefaultStyle() {
-        return "-fx-background-color: #e8f5e8; " +
-                "-fx-padding: 6px 12px; " +
-                "-fx-border-color: #28a745; " +
-                "-fx-border-width: 1px; " +
-                "-fx-border-radius: 6px; " +
-                "-fx-background-radius: 6px;";
-    }
-
-    private String flagActiveStyle() {
-        return "-fx-background-color: #fff3cd; " +
-                "-fx-padding: 6px 12px; " +
-                "-fx-border-color: #ffc107; " +
-                "-fx-border-width: 1px; " +
-                "-fx-border-radius: 6px; " +
-                "-fx-background-radius: 6px;";
     }
 
     public void refresh() {
@@ -237,11 +154,11 @@ public class CpuViewer {
 
             boolean any = flags.isZero() || flags.isNegative() || flags.isCarry() || flags.isOverflow();
             if (any) {
-                flagsLabel.setStyle(flagActiveStyle());
+                flagsLabel.setStyle(Styles.highlightRow());
                 flagsLabel.setTextFill(Color.web("#856404"));
             } else {
-                flagsLabel.setStyle(flagDefaultStyle());
-                flagsLabel.setTextFill(Color.web(VALUE_COLOR));
+                flagsLabel.setStyle(Styles.faintHighlightRow());
+                flagsLabel.setTextFill(Color.web(Colors.VALUE));
             }
         });
     }

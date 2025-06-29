@@ -1,13 +1,15 @@
-package org.lpc.memory.io;
+package org.lpc.memory.io.devices;
+
+import org.lpc.memory.io.IODevice;
 
 import java.util.Map;
 
 /**
- * ConsoleOutputDevice simulates a memory-mapped console output device.
- * Writing a character to the OUTPUT register prints it to standard output.
+ * ConsoleOutputDevice - Memory-mapped console output device.
+ * Writing to the OUTPUT_PRINT register prints the character to standard output.
  *
- * Registers:
- * - OUTPUT_PRINT (offset 0): writing a byte here outputs that character.
+ * Memory Map (4 bytes total):
+ * +0x00 OUTPUT_PRINT  [WO] - Write a character (ASCII code) to print it to the console.
  */
 public class ConsoleOutputDevice implements IODevice {
     public static final int SIZE = 4;
