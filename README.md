@@ -76,8 +76,6 @@ The Neptune Assembly Project is a comprehensive assembly language environment fe
 ### Data Movement Instructions
 | Instruction | Format         | Description                                      | Flags Affected |
 |-------------|----------------|--------------------------------------------------|---------------|
-| Instruction | Format        | Description                                  | Flags Affected |
-|--------------|---------------|----------------------------------------------|----------------|
 | MOV          | rDest, rSrc   | Copy value from rSrc to rDest                | Z, N           |
 | MOVI         | rDest, imm    | Move immediate value into rDest              | Z, N           |
 | CLR          | rDest         | Clear rDest (set to 0)                       | Z, N           |
