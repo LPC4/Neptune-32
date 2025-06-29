@@ -39,7 +39,17 @@ public class CPU {
     // -------- Registers --------
     public int getRegister(int index) {
         validateRegisterIndex(index);
-        return registers[index];
+        return switch (index) {
+            case 252 -> programCounter;
+            case 253 -> stackPointer;
+            case 254 -> heapPointer;
+            default -> {
+                if (index >= 0 && index < registers.length) {
+                    yield registers[index];
+                }
+                throw new IllegalArgumentException("Wrong register index: " + index);
+            }
+        };
     }
 
     public void setRegister(int index, int value) {
@@ -48,7 +58,7 @@ public class CPU {
     }
 
     private void validateRegisterIndex(int index) {
-        if (index < 0 || index >= registers.length) {
+        if (index < 0 || index >= registers.length && index < 252 || index > 254) {
             throw new IllegalArgumentException("Invalid register index: " + index);
         }
     }
@@ -112,8 +122,6 @@ public class CPU {
             words[i] = fetchWord();
         }
         instr.execute(this, words);
-
-        //System.out.println(instructionSet.getName(InstructionUtils.extractOpcode(firstWord)));
     }
 
     // -------- Safety Check --------

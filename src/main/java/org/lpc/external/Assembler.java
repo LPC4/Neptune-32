@@ -16,6 +16,7 @@ public class Assembler {
     private final LabelManager labelManager;
     private final SyscallManager syscallManager;
     private final MemoryResolver memoryResolver;
+    private final MacroManager macroManager;
 
     public Assembler(CPU cpu) {
         this.cpu = cpu;
@@ -23,23 +24,19 @@ public class Assembler {
         this.labelManager = new LabelManager();
         this.syscallManager = new SyscallManager(cpu);
         this.memoryResolver = new MemoryResolver(cpu);
+        this.macroManager = new MacroManager();
     }
 
     public void assembleAndLoad(List<String> lines, int baseAddress) {
-        // Clear previous state
         labelManager.clear();
         syscallManager.clear();
+        macroManager.clear();
 
-        // First pass - parse and collect labels/syscalls
-        List<SourceLine> parsedLines = parseSourceLines(lines, baseAddress);
+        var expanded = macroManager.expandMacros(lines);
+        var parsed = parseSourceLines(expanded, baseAddress);
 
-        // Set program counter if assembling to RAM
         handleProgramStart(baseAddress);
-
-        // Second pass - encode and write to memory
-        writeInstructionsToMemory(parsedLines);
-
-        // Finalize syscall table
+        writeInstructionsToMemory(parsed);
         syscallManager.finalizeSyscallTable(labelManager);
     }
 
@@ -51,23 +48,14 @@ public class Assembler {
             String line = cleanLine(rawLine);
             if (line.isEmpty()) continue;
 
-            // Handle syscalls
             if (syscallManager.processSyscallDeclaration(line, address)) {
                 labelManager.addLabel(syscallManager.getLastLabel(), address);
                 continue;
             }
 
-            // Handle regular labels
-            if (labelManager.processLabelDeclaration(line, address)) {
-                continue;
-            }
+            if (labelManager.processLabelDeclaration(line, address)) continue;
+            if (labelManager.processConstantDeclaration(line)) continue;
 
-            // Handle constants
-            if (labelManager.processConstantDeclaration(line)) {
-                continue;
-            }
-
-            // Parse regular instructions
             InstructionInfo info = parseInstruction(line);
             parsedLines.add(new SourceLine(address, info.mnemonic(), info.args(), info.instruction()));
             address += info.instruction().getWordCount() * 4;
@@ -129,10 +117,10 @@ public class Assembler {
         }
     }
 
-    // Helper records
     private record SourceLine(int address, String mnemonic, String args, Instruction instruction) {}
     private record InstructionInfo(String mnemonic, String args, Instruction instruction) {}
 }
+
 
 // Label Management Component
 class LabelManager {
@@ -154,7 +142,7 @@ class LabelManager {
     }
 
     public boolean processConstantDeclaration(String line) {
-        if (!line.startsWith("const ")) return false;
+        if (!line.startsWith(".const ")) return false;
 
         String[] parts = line.substring(6).trim().split("\\s+");
         if (parts.length != 2) {
@@ -305,5 +293,86 @@ class MemoryResolver {
 
     private boolean inRange(int addr, MemoryHandler mem) {
         return addr >= mem.getBaseAddress() && addr < mem.getBaseAddress() + mem.getSize();
+    }
+}
+
+// Macro Component
+class MacroManager {
+    private record Macro(String name, List<String> args, List<String> body) {}
+    private final Map<String, Macro> macros = new HashMap<>();
+
+    public void clear() {
+        macros.clear();
+    }
+
+    public List<String> expandMacros(List<String> lines) {
+        List<String> result = new ArrayList<>();
+        Iterator<String> iter = lines.iterator();
+
+        while (iter.hasNext()) {
+            String raw = iter.next().trim();
+            if (raw.startsWith(".macro")) {
+                var macro = parseMacro(raw, iter);
+                macros.put(macro.name(), macro);
+            } else {
+                var expanded = expandLine(raw);
+                result.addAll(expanded);
+            }
+        }
+
+        return result;
+    }
+
+    private Macro parseMacro(String header, Iterator<String> iter) {
+        String[] tokens = header.split("\\s+");
+        if (tokens.length < 2) throw new IllegalArgumentException("Invalid macro definition");
+
+        String name = tokens[1];
+        List<String> args = List.of(Arrays.copyOfRange(tokens, 2, tokens.length));
+        List<String> body = new ArrayList<>();
+
+        while (iter.hasNext()) {
+            String line = iter.next().trim();
+            if (line.equalsIgnoreCase(".endmacro")) break;
+            body.add(line);
+        }
+
+        return new Macro(name, args, body);
+    }
+
+    private List<String> expandLine(String line) {
+        if (line.isEmpty() || line.startsWith(";") || line.startsWith("#")) return List.of(line);
+
+        String[] parts = line.split("\\s+", 2);
+        String name = parts[0];
+
+        if (!macros.containsKey(name)) return List.of(line);
+
+        Macro macro = macros.get(name);
+        String argStr = parts.length > 1 ? parts[1].trim() : "";
+        String[] callArgs = argStr.isEmpty() ? new String[0] : argStr.split("\\s*,\\s*");
+
+        if (callArgs.length != macro.args.size()) {
+            throw new IllegalArgumentException("Macro " + name + " expects " + macro.args.size() + " arguments");
+        }
+
+        Map<String, String> substitutions = new HashMap<>();
+        for (int i = 0; i < macro.args.size(); i++) {
+            substitutions.put(macro.args.get(i), callArgs[i]);
+        }
+
+        List<String> expanded = new ArrayList<>();
+        for (String bodyLine : macro.body) {
+            expanded.add(substitute(bodyLine, substitutions));
+        }
+
+        return expanded;
+    }
+
+    private String substitute(String line, Map<String, String> subs) {
+        for (var entry : subs.entrySet()) {
+            line = line.replaceAll("\\b" + entry.getKey() + "\\b", entry.getValue());
+        }
+        return line;
     }
 }

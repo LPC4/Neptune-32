@@ -11,6 +11,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.function.Predicate;
+import org.lpc.instructions.InstructionUtils;
 
 /*
  * NeptuneInstructionSet - Complete Instruction Reference
@@ -97,6 +98,8 @@ import java.util.function.Predicate;
  * =====================================================
  * MOV   rDest, rSrc      - Copy value from rSrc into rDest, update flags
  * MOVI  rDest, imm       - Load immediate imm into rDest, update flags (2-word instruction)
+ * MSET  rDest, rSrc      - Set r1=amount, set rDest - rDest + amount to rSrc (word)
+ * MCPY  rDest, rSrc      - Set r1=amount, copy range from rSrc - rSrc + amount to rDest (addr)
  * CLR   rDest            - Clear rDest (set to 0), update flags
  *
  * =====================================================
@@ -281,7 +284,7 @@ public class NeptuneInstructionSet implements InstructionSet {
                 var split = splitArgs(args, 2);
                 int rAddr = parseRegister(split[0]);
                 int rValue = parseRegister(split[1]);
-                return new int[]{encodeInstruction(rAddr, rValue, getOpcode("MSET"))};
+                return new int[]{InstructionUtils.encodeInstruction(rAddr, rValue, getOpcode("MSET"))};
             }
         });
 
@@ -313,7 +316,7 @@ public class NeptuneInstructionSet implements InstructionSet {
                 var split = splitArgs(args, 2);
                 int rDest = parseRegister(split[0]);
                 int rSrc = parseRegister(split[1]);
-                return new int[]{encodeInstruction(rDest, rSrc, getOpcode("MCPY"))};
+                return new int[]{InstructionUtils.encodeInstruction(rDest, rSrc, getOpcode("MCPY"))};
             }
 
         });
@@ -358,7 +361,7 @@ public class NeptuneInstructionSet implements InstructionSet {
             @Override
             public int[] encode(String args) {
                 int addr = parseImmediate(args);
-                return new int[]{encodeInstruction(0, 0, getOpcode("CALL")), addr};
+                return new int[]{InstructionUtils.encodeInstruction(0, 0, getOpcode("CALL")), addr};
             }
 
             @Override
@@ -374,7 +377,7 @@ public class NeptuneInstructionSet implements InstructionSet {
 
             @Override
             public int[] encode(String args) {
-                return new int[]{encodeInstruction(0, 0, getOpcode("RET"))};
+                return new int[]{InstructionUtils.encodeInstruction(0, 0, getOpcode("RET"))};
             }
         });
     }
@@ -420,7 +423,7 @@ public class NeptuneInstructionSet implements InstructionSet {
                 String[] parts = splitArgs(args, 2);
                 int rDest = parseRegister(parts[0]);
                 int rSrc = parseRegister(parts[1]);
-                return new int[]{encodeInstruction(rDest, rSrc, getOpcode("MOV"))};
+                return new int[]{InstructionUtils.encodeInstruction(rDest, rSrc, getOpcode("MOV"))};
             }
         });
 
@@ -449,7 +452,7 @@ public class NeptuneInstructionSet implements InstructionSet {
                 String[] parts = splitArgs(args, 2);
                 int rA = parseRegister(parts[0]);
                 int rB = parseRegister(parts[1]);
-                return new int[]{encodeInstruction(rA, rB, getOpcode("CMP"))};
+                return new int[]{InstructionUtils.encodeInstruction(rA, rB, getOpcode("CMP"))};
             }
         });
 
@@ -477,7 +480,7 @@ public class NeptuneInstructionSet implements InstructionSet {
                 String[] parts = splitArgs(args, 2);
                 int rA = parseRegister(parts[0]);
                 int rB = parseRegister(parts[1]);
-                return new int[]{encodeInstruction(rA, rB, getOpcode("TEST"))};
+                return new int[]{InstructionUtils.encodeInstruction(rA, rB, getOpcode("TEST"))};
             }
         });
 
@@ -556,7 +559,7 @@ public class NeptuneInstructionSet implements InstructionSet {
             }
 
             public int[] encode(String args) {
-                return new int[] { encodeInstruction(0, 0, getOpcode("SYSCALL")) };
+                return new int[] { InstructionUtils.encodeInstruction(0, 0, getOpcode("SYSCALL")) };
             }
         });
 
@@ -566,7 +569,7 @@ public class NeptuneInstructionSet implements InstructionSet {
 
             @Override
             public int[] encode(String args) {
-                return new int[]{encodeInstruction(0, 0, getOpcode("NOP"))};
+                return new int[]{InstructionUtils.encodeInstruction(0, 0, getOpcode("NOP"))};
             }
         });
 
@@ -576,7 +579,7 @@ public class NeptuneInstructionSet implements InstructionSet {
 
             @Override
             public int[] encode(String args) {
-                return new int[]{encodeInstruction(0, 0, getOpcode("HLT"))};
+                return new int[]{InstructionUtils.encodeInstruction(0, 0, getOpcode("HLT"))};
             }
         });
     }
@@ -601,7 +604,7 @@ public class NeptuneInstructionSet implements InstructionSet {
         @Override
         public int[] encode(String args) {
             int rDest = parseRegister(args);
-            return new int[]{encodeInstruction(rDest, 0, getOpcode(name))};
+            return new int[]{InstructionUtils.encodeInstruction(rDest, 0, getOpcode(name))};
         }
 
         protected abstract int calculate(int value);
@@ -626,7 +629,7 @@ public class NeptuneInstructionSet implements InstructionSet {
             int rDest = parseRegister(parts[0]);
             int imm = parseImmediate(parts[1]);
             return new int[]{
-                    encodeInstruction(rDest, 0, getOpcode(name)),
+                    InstructionUtils.encodeInstruction(rDest, 0, getOpcode(name)),
                     imm
             };
         }
@@ -658,7 +661,7 @@ public class NeptuneInstructionSet implements InstructionSet {
         @Override
         public int[] encode(String args) {
             int reg = parseRegister(args);
-            return new int[]{encodeInstruction(reg, 0, getOpcode(name))};
+            return new int[]{InstructionUtils.encodeInstruction(reg, 0, getOpcode(name))};
         }
 
         public abstract void executeOperation(CPU cpu, int value);
@@ -676,7 +679,7 @@ public class NeptuneInstructionSet implements InstructionSet {
             public int[] encode(String args) {
                 int addr = parseImmediate(args);
                 return new int[]{
-                        encodeInstruction(0, 0, getOpcode(name)),
+                        InstructionUtils.encodeInstruction(0, 0, getOpcode(name)),
                         addr
                 };
             }
@@ -708,7 +711,7 @@ public class NeptuneInstructionSet implements InstructionSet {
                 String[] parts = splitArgs(args, 2);
                 int rA = parseRegister(parts[0]);
                 int rB = parseRegister(parts[1]);
-                return new int[]{encodeInstruction(rA, rB, getOpcode(name))};
+                return new int[]{InstructionUtils.encodeInstruction(rA, rB, getOpcode(name))};
             }
         };
     }
@@ -729,7 +732,7 @@ public class NeptuneInstructionSet implements InstructionSet {
                 String[] parts = splitArgs(args, 2);
                 int rDest = parseRegister(parts[0]);
                 int shift = parseImmediate(parts[1]);
-                return new int[]{encodeInstruction(rDest, shift, getOpcode(name))};
+                return new int[]{InstructionUtils.encodeInstruction(rDest, shift, getOpcode(name))};
             }
         };
     }
@@ -753,7 +756,7 @@ public class NeptuneInstructionSet implements InstructionSet {
                 String[] parts = splitArgs(args, 2);
                 int rDest = parseRegister(parts[0]);
                 int rSrc = parseRegister(parts[1]);
-                return new int[]{encodeInstruction(rDest, rSrc, getOpcode(name))};
+                return new int[]{InstructionUtils.encodeInstruction(rDest, rSrc, getOpcode(name))};
             }
         });
     }
@@ -777,7 +780,7 @@ public class NeptuneInstructionSet implements InstructionSet {
                 int rDest = parseRegister(parts[0]);
                 int imm = parseImmediate(parts[1]);
                 return new int[]{
-                        encodeInstruction(rDest, 0, getOpcode(name)),
+                        InstructionUtils.encodeInstruction(rDest, 0, getOpcode(name)),
                         imm
                 };
             }
@@ -800,15 +803,28 @@ public class NeptuneInstructionSet implements InstructionSet {
 
     private int parseRegister(String token) {
         token = token.trim().toLowerCase();
-        if (!token.startsWith("r")) {
-            throw new IllegalArgumentException("Invalid register: " + token);
-        }
-        return Integer.parseInt(token.substring(1));
+
+        return switch (token) {
+            case "pc" -> 252;
+            case "sp" -> 253;
+            case "hp" -> 254;
+            default -> {
+                if (!token.startsWith("r")) {
+                    throw new IllegalArgumentException("Invalid register: " + token);
+                }
+                try {
+                    yield Integer.parseInt(token.substring(1));
+                } catch (NumberFormatException e) {
+                    throw new IllegalArgumentException("Invalid register number: " + token);
+                }
+            }
+        };
     }
+
 
     @Override
     public Instruction getInstruction(int instructionWord) {
-        byte opcode = decodeOpcode(instructionWord);
+        byte opcode = InstructionUtils.decodeOpcode(instructionWord);
         return instructionMap.get(opcode);
     }
 
@@ -828,14 +844,6 @@ public class NeptuneInstructionSet implements InstructionSet {
     @Override
     public String getName(Byte opcode) {
         return opcodeToName.get(opcode);
-    }
-
-    private byte decodeOpcode(int instructionWord) {
-        return (byte) (instructionWord & 0xFF);
-    }
-
-    private int encodeInstruction(int rDest, int rSrc, int opcode) {
-        return (rDest << 16) | (rSrc << 8) | (opcode & 0xFF);
     }
 
     private void logInstructions() {

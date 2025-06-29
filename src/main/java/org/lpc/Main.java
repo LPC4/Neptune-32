@@ -55,7 +55,7 @@ public class Main extends Application {
     }
 
     private void loadUserProgram() {
-        assembleAndLoad("/example_programs/keyboard_input.asm", cpu.getMemoryMap().getRamStart());
+        assembleAndLoad("/example_programs/heap.asm", cpu.getMemoryMap().getRamStart());
     }
 
     private void assembleAndLoad(String resourcePath, int loadAddress) {

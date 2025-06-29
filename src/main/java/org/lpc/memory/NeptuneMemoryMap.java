@@ -35,9 +35,6 @@ public class NeptuneMemoryMap implements MemoryMap {
         printMemoryLayout();
     }
 
-    private static final int NAME_WIDTH = 20;
-    private static final int SIZE_WIDTH = 8;
-
     public void printMemoryLayout() {
         TablePrinter table = new TablePrinter("NEPTUNE MEMORY MAP", 20, 10, 8);
 

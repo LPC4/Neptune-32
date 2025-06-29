@@ -52,15 +52,21 @@ public class ExternalConsole {
     }
 
     private void redirectSystemStreams() {
+        PrintStream originalOut = System.out;
+        PrintStream originalErr = System.err;
+
         OutputStream out = new OutputStream() {
             @Override
             public void write(int b) {
                 appendText(String.valueOf((char) b));
+                originalOut.write(b);
             }
 
             @Override
             public void write(byte[] b, int off, int len) {
-                appendText(new String(b, off, len));
+                String text = new String(b, off, len);
+                appendText(text);
+                originalOut.write(b, off, len);
             }
 
             private void appendText(String text) {
@@ -68,8 +74,7 @@ public class ExternalConsole {
             }
         };
 
-        PrintStream ps = new PrintStream(out, true);
-        System.setOut(ps);
-        System.setErr(ps);
+        System.setOut(new PrintStream(out, true));
+        System.setErr(originalErr); // Leave System.err as-is
     }
 }

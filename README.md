@@ -1,209 +1,340 @@
-# Neptune Assembly Project
+# Neptune CPU Emulator Documentation
 
-![Neptune CPU Visualization](images/cpu_viewer.png)
-![Neptune RAM Visualization](images/memory_viewer.png)
+## Table of Contents
 
-## Project Overview
-The Neptune Assembly Project is a comprehensive assembly language environment featuring a custom CPU architecture with a complete instruction set, memory management system, and debugging tools. The project includes a Neptune CPU emulator with visualization capabilities and VRAM support for graphics operations.
+1. [Overview](#overview)
+2. [Memory Map](#memory-map)
+3. [Register Set](#register-set)
+4. [Instruction Encoding](#instruction-encoding)
+5. [Assembler Syntax](#assembler-syntax)
+6. [IO Devices](#io-devices)
+7. [VRAM Layout](#vram-layout)
+8. [Syscall Mechanism](#syscall-mechanism)
+9. [Instruction Set](#instruction-set)
+10. [Development Notes](#development-notes)
+11. [License](#license)
+12. [Author](#author)
+13. [Contributions](#contributions)
 
-## Instruction Set Reference
+---
 
-### Arithmetic Instructions
-| Instruction | Format         | Description                                      | Flags Affected |
-|-------------|----------------|--------------------------------------------------|---------------|
-| ADD         | `rDest, rSrc`  | Add rSrc to rDest                                | Z, N, V, C    |
-| ADDI        | `rDest, imm`   | Add immediate to rDest                           | Z, N, V, C    |
-| SUB         | `rDest, rSrc`  | Subtract rSrc from rDest                         | Z, N, V, C    |
-| SUBI        | `rDest, imm`   | Subtract immediate from rDest                    | Z, N, V, C    |
-| MUL         | `rDest, rSrc`  | Multiply rDest by rSrc                           | Z, N, V, C    |
-| MULI        | `rDest, imm`   | Multiply rDest by immediate                      | Z, N, V, C    |
-| DIV         | `rDest, rSrc`  | Divide rDest by rSrc                             | Z, N, V, C    |
-| DIVI        | `rDest, imm`   | Divide rDest by immediate                        | Z, N, V, C    |
-| MOD         | `rDest, rSrc`  | Modulo rDest by rSrc                             | Z, N, V, C    |
-| MODI        | `rDest, imm`   | Modulo rDest by immediate                        | Z, N, V, C    |
-| INC         | `rDest`        | Increment rDest by 1                             | Z, N, V, C    |
-| DEC         | `rDest`        | Decrement rDest by 1                             | Z, N, V, C    |
-| NEG         | `rDest`        | Negate rDest                                     | Z, N, V, C    |
+## Overview
 
-### Logical Instructions
-| Instruction | Format         | Description                                      | Flags Affected |
-|-------------|----------------|--------------------------------------------------|---------------|
-| AND         | `rDest, rSrc`  | Bitwise AND rDest with rSrc                      | Z, N          |
-| ANDI        | `rDest, imm`   | Bitwise AND rDest with immediate                 | Z, N          |
-| OR          | `rDest, rSrc`  | Bitwise OR rDest with rSrc                       | Z, N          |
-| ORI         | `rDest, imm`   | Bitwise OR rDest with immediate                  | Z, N          |
-| XOR         | `rDest, rSrc`  | Bitwise XOR rDest with rSrc                      | Z, N          |
-| XORI        | `rDest, imm`   | Bitwise XOR rDest with immediate                 | Z, N          |
-| NOT         | `rDest`        | Bitwise NOT of rDest                             | Z, N          |
+Neptune is a custom-built 32-bit CPU emulator with an integrated assembler and assembly language. It is designed for educational purposes, experimentation, and as a foundation for building simple operating systems or games. The emulator simulates RAM, ROM (used for syscalls), VRAM for graphical output, a stack, a heap, and memory-mapped IO devices. It uses little-endian word addressing and has fixed-size instructions (single or double word).
 
-### Shift Instructions
-| Instruction | Format         | Description                                      | Flags Affected |
-|-------------|----------------|--------------------------------------------------|---------------|
-| SHL         | `rDest, shift` | Shift rDest left by shift bits                   | Z, N, C       |
-| SHR         | `rDest, shift` | Logical shift rDest right by shift bits          | Z, N, C       |
+---
 
-### Memory Instructions
-| Instruction | Format            | Description                                          | Flags Affected |
-|--------------|-------------------|------------------------------------------------------|----------------|
-| LOAD         | rDest, rAddr      | Load word from memory at rAddr                      | Z, N           |
-| LOADI        | rDest, address    | Load word from absolute memory address              | Z, N           |
-| STORE        | rSrc, rAddr       | Store word into memory at rAddr                     | None           |
-| STORI        | rSrc, address     | Store word into absolute memory address             | None           |
+## Memory Map
 
+### Layout Summary
 
-### Control Flow Instructions
-| Instruction | Format       | Description                                            | Flags Affected |
-|--------------|--------------|--------------------------------------------------------|----------------|
-| JMP          | address      | Unconditional jump                                    | None           |
-| JZ           | address      | Jump if zero flag set                                 | None           |
-| JE           | address      | Jump if equal (alias for JZ)                          | None           |
-| JNZ          | address      | Jump if zero flag not set                             | None           |
-| JNE          | address      | Jump if not equal (alias for JNZ)                     | None           |
-| JL           | address      | Jump if less (negative flag set)                      | None           |
-| JG           | address      | Jump if greater (not zero and not negative)           | None           |
-| JN           | address      | Jump if negative                                      | None           |
-| JP           | address      | Jump if positive (not negative)                       | None           |
-| CALL         | address      | Push PC to stack and jump to address                  | None           |
-| RET          |               | Pop PC from stack and jump                            | None           |
+| Region          | Address Range           | Size   | Description                               |
+| --------------- | ----------------------- | ------ | ----------------------------------------- |
+| ROM             | 0x00000000 - 0x00001FFF | 8 KB   | Boot ROM (contains syscall table & code)  |
+| - Syscall Table | 0x00000010 - 0x0000010F | 256 B  | Maps 64 syscalls to handler addresses (4 bytes each) |
+| - Syscall Code  | 0x00000110 - 0x0000090F | 2 KB   | Syscall handler implementations           |
+| RAM             | 0x00002000 - 0x00021FFF | 128 KB | Main RAM for programs                     |
+| - Heap          | 0x00004000 - dynamic    | ~      | Grows upwards from 8KB into RAM          |
+| - Stack         | 0x00021FFC - downwards  | ~      | Grows downwards from end of RAM           |
+| VRAM            | 0x00022000 - 0x00031FFF | 64 KB  | 128x128 RGBA32 framebuffer                |
+| IO              | 0x00032000 - 0x00032FFF | 4 KB   | Memory-mapped input/output devices        |
 
+### Memory Details
 
-### Stack Instructions
-| Instruction | Format         | Description                                      | Flags Affected |
-|-------------|----------------|--------------------------------------------------|---------------|
-| PUSH        | `rSrc`         | Push register onto stack                         | None          |
-| POP         | `rDest`        | Pop from stack into register                     | Z, N          |
+* **ROM Start:** 0x00000000 (8 KB total)
+* **RAM Start:** 0x00002000 (128 KB total)
+* **Heap Start:** 0x00004000 (8 KB into RAM)
+* **Stack Start:** 0x00021FFC (grows downward from end of RAM)
+* **VRAM Start:** 0x00022000 (64 KB total)
+* **IO Start:** 0x00032000 (4 KB total)
 
-### Data Movement Instructions
-| Instruction | Format         | Description                                      | Flags Affected |
-|-------------|----------------|--------------------------------------------------|---------------|
-| MOV          | rDest, rSrc   | Copy value from rSrc to rDest                | Z, N           |
-| MOVI         | rDest, imm    | Move immediate value into rDest              | Z, N           |
-| CLR          | rDest         | Clear rDest (set to 0)                       | Z, N           |
+### Notes
 
+* Memory is byte-addressable but operates on 32-bit words
+* All addresses are 32-bit
+* Stack collisions with heap result in runtime errors
+* Words are 32-bit (4 bytes) and affect instruction encoding
 
-### Comparison Instructions
-| Instruction | Format         | Description                                      | Flags Affected |
-|-------------|----------------|--------------------------------------------------|---------------|
-| CMP         | `rA, rB`       | Compare rA with rB (rA - rB)                     | Z, N, V, C    |
-| CMPI        | `rA, imm`      | Compare rA with immediate                        | Z, N, V, C    |
-| TEST        | `rA, rB`       | Bitwise AND of rA and rB                         | Z, N          |
-| TESTI       | `rA, imm`      | Bitwise AND of rA and immediate                  | Z, N          |
+---
 
-### System Instructions
-| Instruction | Format         | Description                                      | Flags Affected |
-|-------------|----------------|--------------------------------------------------|---------------|
-| SYSCALL     |                | Execute system call specified by r0             | None          |
-| NOP         |                | No operation                                     | None          |
-| HLT         |                | Halt the CPU                                     | None          |
+## Register Set
 
+Neptune has 32 general-purpose registers (configurable in constructor) plus special registers:
 
-### Flag Behavior
-| Flag | Name         | Description                                      |
-|------|--------------|--------------------------------------------------|
-| Z    | Zero         | Set when result is zero                          |
-| N    | Negative     | Set when result is negative (MSB = 1)            |
-| V    | Overflow     | Set when arithmetic overflow occurs             |
-| C    | Carry        | Set when carry occurs                           |
+### General-Purpose Registers
+| Register | Description                                  |
+| -------- | -------------------------------------------- |
+| r0 - r31 | General-purpose registers (32 total, default) |
 
-### Register Convention
-- `r0-r15`: General purpose 32-bit registers
-- Stack pointer: Implicit (not directly accessible)
+### Special Registers
+| Register | Description                                  |
+| -------- | -------------------------------------------- |
+| PC       | Program Counter, tracks next instruction     |
+| SP       | Stack Pointer, grows downward                |
+| HP       | Heap Pointer, grows upward                   |
+| FLAGS    | Contains four boolean flags                  |
 
-### Memory Access
-- Word-addressable (32-bit values)
-- Byte-addressable memory accessed in words
-- Little-endian byte ordering
+### Flag Definitions
 
-### Immediate Values
-- Decimal: `42`
-- Hexadecimal: `0x2A`
+The FLAGS register contains four boolean flags:
 
-## System Calls
+* **Z (Zero):** Set if result is zero
+* **N (Negative):** Set if result is negative (signed)
+* **C (Carry):** Set if unsigned carry occurs
+* **V (Overflow):** Set if signed overflow occurs
 
-### `set_pixel_RGBA32` (Syscall 0)
-Sets a pixel in VRAM at specified coordinates.
+---
 
-**Parameters:**
-- `r1`: X coordinate (0 to width-1)
-- `r2`: Y coordinate (0 to height-1)
-- `r3`: RGBA32 color value (0xAARRGGBB)
-- `r4`: Screen width in pixels
+## Instruction Encoding
 
-### `get_neptune_vram_info` (Syscall 1)
-Returns Neptune VRAM configuration information.
+### Single Word Instructions (Register-Register)
 
-**Output:**
-- `r1`: VRAM base address (0x0000A000)
-- `r2`: VRAM total size (65,536 bytes)
-- `r3`: Screen width (128 pixels)
-- `r4`: Screen height (128 pixels)
-
-## Example Program
-
-```assembly
-; Neptune Assembly Program - Half Green, Half Blue Screen Fill
-
-START:
-    ; Get VRAM information
-    LOADI r0, 1          ; System call 1: Get VRAM info
-    SYSCALL              ; r1=start, r2=size, r3=width, r4=height
-
-    ; Store VRAM info for later use
-    MOV r15, r1          ; r15 = VRAM start address
-    MOV r14, r3          ; r14 = width (save for syscall parameter)
-    MOV r13, r4          ; r13 = height (save for loop comparison)
-
-    ; Calculate half width
-    SHR r14, 1           ; r14 = width/2 (halfway point)
-
-    ; Set up colors
-    LOADI r5, 0xFF00FF00 ; Green color (ARGB: Alpha=FF, Red=00, Green=FF, Blue=00)
-    LOADI r8, 0xFFFF0000 ; Blue color (ARGB: Alpha=FF, Red=00, Green=00, Blue=FF)
-
-    ; Fill screen using pixel syscall
-    CLR r6               ; r6 = y coordinate (row)
-outer_loop:
-    CLR r7               ; r7 = x coordinate (column)
-    inner_loop:
-        ; Set parameters for set_pixel_RGBA32 syscall
-        LOADI r0, 0      ; r0 = syscall number (set_pixel_RGBA32)
-        MOV r1, r7       ; r1 = x coordinate
-        MOV r2, r6       ; r2 = y coordinate
-
-        ; Choose color based on x position
-        CMP r7, r14      ; Compare x with width/2
-        JL green_half     ; If x < width/2, use green
-        MOV r3, r8       ; Else use blue
-        JMP set_pixel
-    green_half:
-        MOV r3, r5       ; Use green color
-
-    set_pixel:
-        MOV r4, r14      ; r4 = original width (restore it)
-        SHL r4, 1        ; Multiply by 2 since we divided by 2 earlier
-
-        ; Call set_pixel syscall
-        SYSCALL
-
-        ; Move to next column
-        INC r7
-        CMP r7, r4       ; Compare x with full width
-        JL inner_loop
-
-    ; Move to next row
-    INC r6
-    CMP r6, r13          ; Compare y with height
-    JL outer_loop
-
-    ; Halt the program
-    HLT
+```
+| 31-24: rDest | 23-16: rSrc | 15-8: Reserved | 7-0: Opcode |
 ```
 
-## Debugging Tools
-Use the included debugging tools to inspect program execution:
-- `CpuViewer`: Monitor register values and CPU state
-- `MemoryViewer`: Examine memory contents
-- `VramViewer`: Visualize VRAM content in RGBA32 format
+* Example: `ADD r1, r2` → r1 = r1 + r2 (r1 is both source and destination)
+
+### Double Word Instructions (Immediate)
+
+```
+Word 1: | 31-24: rDest | 23-16: 0 | 15-8: Reserved | 7-0: Opcode |
+Word 2: Immediate value (32-bit literal/address)
+```
+
+* Example: `MOVI r1, 42` → r1 = 42
+
+### Jump/Call Instructions (Double Word)
+
+* Use the same immediate encoding format, where Word 2 is the absolute 32-bit address
+
+---
+
+## Assembler Syntax
+
+* **Labels:** `label:` (used for jumps and calls)
+* **Comments:** `;` starts a comment line
+* **Instructions:** Case-insensitive (recommended uppercase)
+* **Immediate literals:**
+    * Decimal: `42`
+    * Hexadecimal: `0x2A`
+* **No directives** like `.org` or `.word` are currently supported
+
+---
+
+## IO Devices
+
+### Keyboard Input Device
+
+| Offset | Name          | Type | Description                               |
+| ------ | ------------- | ---- | ----------------------------------------- |
+| +0x00  | FIRST_CHAR    | RO   | ASCII code of the oldest char in buffer   |
+| +0x04  | BUFFER_READY  | RO   | 1 if buffer has >=2 chars, else 0         |
+| +0x08  | CURRENT_CHAR  | RO   | Most recent char pressed                  |
+| +0x0C  | CONTROL       | WO   | 1=consume oldest, 2=clear buffer, 3=reset |
+
+### Console Output Device
+
+* Write ASCII values to the output register at offset +0x00
+* CPU sends bytes to display as console output
+
+### Timer Device
+
+* Provides tick counts or can be expanded for interrupts
+* Offset mappings:
+    * +0x00: Current tick count (RO)
+    * +0x04: Control (WO)
+
+---
+
+## VRAM Layout
+
+* **Resolution:** 128x128 pixels
+* **Format:** RGBA32 (4 bytes per pixel)
+* **Total Size:** 64 KB
+* **Address formula:**
+
+```
+address = VRAM_BASE + (y * 128 + x) * 4
+```
+
+* **Pixel layout:** Row-major order (left-to-right, top-to-bottom)
+
+Each pixel is stored as 4 consecutive bytes:
+
+```
+| +0: Red | +1: Green | +2: Blue | +3: Alpha |
+```
+
+* Write to VRAM to update the framebuffer
+
+---
+
+## Syscall Mechanism
+
+* Invoke syscalls using the `SYSCALL` instruction
+* Syscall number is placed in register `r0`
+* The syscall handler address is looked up in ROM's syscall table (64 possible syscalls)
+* The CPU pushes PC onto the stack and jumps to the syscall handler
+* Use `RET` at the end of the syscall handler to return
+
+---
+
+## Instruction Set
+
+### Arithmetic Instructions
+
+| Instruction | Description |
+|-------------|-------------|
+| `ADD rDest, rSrc` | Add rSrc to rDest, store in rDest, update flags |
+| `ADDI rDest, imm` | Add immediate to rDest, store in rDest, update flags |
+| `SUB rDest, rSrc` | Subtract rSrc from rDest, store in rDest, update flags |
+| `SUBI rDest, imm` | Subtract immediate from rDest, store in rDest, update flags |
+| `MUL rDest, rSrc` | Multiply rDest by rSrc, store in rDest, update flags |
+| `MULI rDest, imm` | Multiply rDest by immediate, store in rDest, update flags |
+| `DIV rDest, rSrc` | Divide rDest by rSrc, store in rDest, update flags (throws if divide by zero) |
+| `DIVI rDest, imm` | Divide rDest by immediate, store in rDest, update flags (throws if divide by zero) |
+| `MOD rDest, rSrc` | Modulo rDest by rSrc, store in rDest, update flags (throws if modulo by zero) |
+| `MODI rDest, imm` | Modulo rDest by immediate, store in rDest, update flags (throws if modulo by zero) |
+| `INC rDest` | Increment rDest by 1, update flags |
+| `DEC rDest` | Decrement rDest by 1, update flags |
+| `NEG rDest` | Negate rDest, update flags |
+
+### Logical Instructions
+
+| Instruction | Description |
+|-------------|-------------|
+| `AND rDest, rSrc` | Bitwise AND rDest with rSrc, store in rDest, update flags |
+| `ANDI rDest, imm` | Bitwise AND rDest with immediate, store in rDest, update flags |
+| `OR rDest, rSrc` | Bitwise OR rDest with rSrc, store in rDest, update flags |
+| `ORI rDest, imm` | Bitwise OR rDest with immediate, store in rDest, update flags |
+| `XOR rDest, rSrc` | Bitwise XOR rDest with rSrc, store in rDest, update flags |
+| `XORI rDest, imm` | Bitwise XOR rDest with immediate, store in rDest, update flags |
+| `NOT rDest` | Bitwise NOT of rDest, store in rDest, update flags |
+
+### Shift Instructions
+
+| Instruction | Description |
+|-------------|-------------|
+| `SHL rDest, shift` | Shift rDest left by shift bits, store in rDest, update flags |
+| `SHR rDest, shift` | Logical shift rDest right by shift bits, store in rDest, update flags |
+
+### Memory Instructions
+
+| Instruction | Description |
+|-------------|-------------|
+| `LOAD rDest, rAddr` | Load word from memory at rAddr into rDest, update flags |
+| `STORE rSrc, rAddr` | Store word from rSrc into memory at rAddr |
+| `LOADI rDest, immAddr` | Load word from memory at immediate address into rDest, update flags |
+| `STORI rSrc, immAddr` | Store word into memory at immediate address |
+| `MSET rAddr, rValue` | Set r1 words starting at rAddr to rValue |
+| `MCPY rDest, rSrc` | Copy r1 words from rSrc to rDest |
+
+### Control Flow Instructions
+
+#### Unconditional Jumps
+| Instruction | Description |
+|-------------|-------------|
+| `JMP address` | Jump unconditionally |
+| `CALL address` | Push PC to stack, jump to address (2-word instruction) |
+| `RET` | Pop PC from stack and jump back |
+
+#### Conditional Jumps (Equality/Zero)
+| Instruction | Description |
+|-------------|-------------|
+| `JZ address` | Jump if zero flag is set (==) |
+| `JE address` | Jump if zero flag is set (==) |
+| `JNZ address` | Jump if zero flag is not set (!=) |
+
+#### Conditional Jumps (Signed Comparison)
+| Instruction | Description |
+|-------------|-------------|
+| `JN address` | Jump if negative flag is set (signed < 0) |
+| `JP address` | Jump if negative flag is not set (signed >= 0) |
+| `JG address` | Jump if greater (signed >) - zero flag not set AND negative flag not set |
+| `JGE address` | Jump if greater or equal (>=) - negative flag not set |
+| `JL address` | Jump if less (signed <) - negative flag set |
+| `JLE address` | Jump if less or equal (<=) - negative flag set OR zero flag set |
+
+#### Conditional Jumps (Unsigned Comparison)
+| Instruction | Description |
+|-------------|-------------|
+| `JC address` | Jump if carry flag is set (unsigned <) |
+| `JNC address` | Jump if carry flag is not set (unsigned >=) |
+| `JA address` | Jump if above (unsigned >) - carry flag not set AND zero flag not set |
+| `JAE address` | Jump if above or equal (>=) - carry flag not set |
+| `JB address` | Jump if below (unsigned <) - carry flag set |
+| `JBE address` | Jump if below or equal (<=) - carry flag set OR zero flag set |
+
+### Stack Instructions
+
+| Instruction | Description |
+|-------------|-------------|
+| `PUSH rSrc` | Push register rSrc onto stack |
+| `POP rDest` | Pop from stack into rDest, update flags |
+
+### Data Movement Instructions
+
+| Instruction | Description |
+|-------------|-------------|
+| `MOV rDest, rSrc` | Copy value from rSrc into rDest, update flags |
+| `MOVI rDest, imm` | Load immediate into rDest, update flags (2-word instruction) |
+| `CLR rDest` | Clear rDest (set to 0), update flags |
+
+### Comparison Instructions
+
+| Instruction | Description |
+|-------------|-------------|
+| `CMP rA, rB` | Compare rA with rB (rA - rB), update flags (no register change) |
+| `CMPI rA, imm` | Compare rA with immediate, update flags (no register change) |
+| `TEST rA, rB` | Bitwise AND of rA and rB, update flags (no register change) |
+| `TESTI rA, imm` | Bitwise AND of rA and immediate, update flags (no register change) |
+
+### System Instructions
+
+| Instruction | Description |
+|-------------|-------------|
+| `SYSCALL` | Execute system call specified by r0 |
+| `NOP` | No operation |
+| `HLT` | Halt the CPU |
+
+### Flag Behavior Reference
+
+| Instruction Category | Z | N | C | V |
+|---------------------|---|---|---|---|
+| Arithmetic          | ✔ | ✔ | ✔ | ✔ |
+| Logic               | ✔ | ✔ | ✖ | ✖ |
+| CMP/TEST            | ✔ | ✔ | ✖ | ✖ |
+| MOV/MOVI            | ✔ | ✔ | ✖ | ✖ |
+
+---
+
+## Development Notes
+
+* PC starts at `main:` label
+* ROM is reserved for syscall handlers and the syscall table
+* Heap grows upward from HEAP_START (0x00004000)
+* Stack grows downward from STACK_START (0x00021FFC)
+* Heap-stack collision triggers a runtime panic
+* VRAM is read-write memory for external graphics engines
+* Register count is configurable in constructor (default: r0-r31)
+* Words are 32-bit (4 bytes)
+
+### Future Extensions
+
+* Directives in assembler (`.data`, `.org`, etc.)
+* Interrupt support
+* Floating-point instructions
+* More IO devices (audio, mouse, network)
+
+---
 
 ## License
-This project is licensed under the MIT License. See the LICENSE file for details.
+
+MIT License or a license of your choosing.
+
+---
+
+## Contributions
+
+Contributions are welcome. Submit pull requests to add IO devices, instructions, syscall implementations, or assembler features.
