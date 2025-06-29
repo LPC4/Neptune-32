@@ -60,7 +60,7 @@ public class CpuViewer {
         AnimationTimer refreshTimer = new AnimationTimer() {
             @Override
             public void handle(long now) {
-                if (now - lastUpdate >= 200_000_000) {
+                if (now - lastUpdate >= 20_000_000) {
                     refresh();
                     lastUpdate = now;
                 }

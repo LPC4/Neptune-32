@@ -6,6 +6,7 @@ import org.lpc.instructions.Instruction;
 import org.lpc.instructions.InstructionSet;
 import org.lpc.memory.Memory;
 import org.lpc.memory.MemoryBus;
+import org.lpc.memory.MemoryHandler;
 
 import java.util.*;
 
@@ -61,6 +62,11 @@ public class Assembler {
                 continue;
             }
 
+            // Handle constants
+            if (labelManager.processConstantDeclaration(line)) {
+                continue;
+            }
+
             // Parse regular instructions
             InstructionInfo info = parseInstruction(line);
             parsedLines.add(new SourceLine(address, info.mnemonic(), info.args(), info.instruction()));
@@ -101,10 +107,10 @@ public class Assembler {
 
     private void handleProgramStart(int baseAddress) {
         if (memoryResolver.isRamAddress(baseAddress)) {
-            if (!labelManager.containsLabel("START")) {
-                throw new IllegalArgumentException("Program must contain a START label");
+            if (!labelManager.containsLabel("main")) {
+                throw new IllegalArgumentException("Program must contain a main label");
             }
-            cpu.setProgramCounter(labelManager.getAddress("START"));
+            cpu.setProgramCounter(labelManager.getAddress("main"));
         }
     }
 
@@ -114,7 +120,7 @@ public class Assembler {
             int[] words = line.instruction().encode(resolvedArgs);
 
             int addr = line.address();
-            Memory targetMem = memoryResolver.resolve(addr);
+            MemoryHandler targetMem = memoryResolver.resolve(addr);
 
             for (int word : words) {
                 targetMem.writeWord(addr, word);
@@ -131,9 +137,11 @@ public class Assembler {
 // Label Management Component
 class LabelManager {
     private final Map<String, Integer> labelToAddress = new HashMap<>();
+    private final Map<String, Integer> constants = new HashMap<>();
 
     public void clear() {
         labelToAddress.clear();
+        constants.clear();
     }
 
     public boolean processLabelDeclaration(String line, int address) {
@@ -145,9 +153,28 @@ class LabelManager {
         return false;
     }
 
+    public boolean processConstantDeclaration(String line) {
+        if (!line.startsWith("const ")) return false;
+
+        String[] parts = line.substring(6).trim().split("\\s+");
+        if (parts.length != 2) {
+            throw new IllegalArgumentException("Invalid const declaration: " + line);
+        }
+
+        String name = parts[0];
+        String valueStr = parts[1];
+
+        int value = parseImmediate(valueStr);
+        if (labelToAddress.containsKey(name) || constants.containsKey(name)) {
+            throw new IllegalArgumentException("Duplicate label or constant: " + name);
+        }
+        constants.put(name, value);
+        return true;
+    }
+
     public void addLabel(String label, int address) {
-        if (labelToAddress.containsKey(label)) {
-            throw new IllegalArgumentException("Duplicate label: " + label);
+        if (labelToAddress.containsKey(label) || constants.containsKey(label)) {
+            throw new IllegalArgumentException("Duplicate label or constant: " + label);
         }
         labelToAddress.put(label, address);
     }
@@ -160,6 +187,8 @@ class LabelManager {
             String token = parts[i].trim();
             if (labelToAddress.containsKey(token)) {
                 parts[i] = String.valueOf(labelToAddress.get(token));
+            } else if (constants.containsKey(token)) {
+                parts[i] = String.valueOf(constants.get(token));
             }
         }
         return String.join(",", parts);
@@ -171,6 +200,13 @@ class LabelManager {
 
     public int getAddress(String label) {
         return labelToAddress.get(label);
+    }
+
+    private int parseImmediate(String value) {
+        if (value.startsWith("0x") || value.startsWith("0X")) {
+            return Integer.parseUnsignedInt(value.substring(2), 16);
+        }
+        return Integer.parseInt(value);
     }
 }
 
@@ -254,7 +290,7 @@ class MemoryResolver {
         this.cpu = cpu;
     }
 
-    public Memory resolve(int addr) {
+    public MemoryHandler resolve(int addr) {
         MemoryBus mem = cpu.getMemory();
         if (inRange(addr, mem.getRom())) return mem.getRom();
         if (inRange(addr, mem.getRam())) return mem.getRam();
@@ -267,7 +303,7 @@ class MemoryResolver {
         return inRange(addr, cpu.getMemory().getRam());
     }
 
-    private boolean inRange(int addr, Memory mem) {
+    private boolean inRange(int addr, MemoryHandler mem) {
         return addr >= mem.getBaseAddress() && addr < mem.getBaseAddress() + mem.getSize();
     }
 }

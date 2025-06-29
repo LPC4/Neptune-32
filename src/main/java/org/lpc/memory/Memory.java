@@ -2,7 +2,7 @@ package org.lpc.memory;
 
 import lombok.Getter;
 
-public class Memory {
+public class Memory implements MemoryHandler {
     private final byte[] data;
     @Getter
     private final int baseAddress;

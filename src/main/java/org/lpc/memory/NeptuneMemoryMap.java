@@ -1,5 +1,7 @@
 package org.lpc.memory;
 
+import org.lpc.visualization.debug.TablePrinter;
+
 public class NeptuneMemoryMap implements MemoryMap {
     // ROM
     private static final int BOOT_ROM_START = 0;
@@ -33,99 +35,57 @@ public class NeptuneMemoryMap implements MemoryMap {
         printMemoryLayout();
     }
 
-    private void printMemoryLayout() {
-        System.out.println();
-        System.out.println("=".repeat(80));
-        System.out.println("                        NEPTUNE MEMORY MAP");
-        System.out.println("=".repeat(80));
+    private static final int NAME_WIDTH = 20;
+    private static final int SIZE_WIDTH = 8;
 
-        // Header
-        System.out.printf("%-20s | %-12s | %-12s | %-10s | %s\n",
-                "REGION", "START", "END", "SIZE", "DESCRIPTION");
-        System.out.println("-".repeat(80));
+    public void printMemoryLayout() {
+        TablePrinter table = new TablePrinter("NEPTUNE MEMORY MAP", 20, 10, 8);
 
-        // ROM Section
-        printMemoryRegion("ROM (Total)", BOOT_ROM_START, BOOT_ROM_START + BOOT_ROM_SIZE - 1,
+        table.printHeader("REGION");
+
+        table.printRow("ROM (Total)", BOOT_ROM_START, BOOT_ROM_START + BOOT_ROM_SIZE - 1,
                 BOOT_ROM_SIZE, "Boot ROM containing syscalls");
-        printMemoryRegion("  Boot Code", BOOT_ROM_START, SYSCALL_TABLE_START - 1,
+
+        table.printRow("  Boot Code", BOOT_ROM_START, SYSCALL_TABLE_START - 1,
                 SYSCALL_TABLE_START - BOOT_ROM_START, "Boot loader code");
-        printMemoryRegion("  Syscall Table", SYSCALL_TABLE_START, SYSCALL_TABLE_START + SYSCALL_TABLE_SIZE - 1,
-                SYSCALL_TABLE_SIZE, String.format("64 syscall entries (%d bytes each)", SYSCALL_TABLE_SIZE / 64));
-        printMemoryRegion("  Syscall Code", SYSCALL_CODE_START, SYSCALL_CODE_START + SYSCALL_CODE_SIZE - 1,
+
+        table.printRow("  Syscall Table", SYSCALL_TABLE_START, SYSCALL_TABLE_START + SYSCALL_TABLE_SIZE - 1,
+                SYSCALL_TABLE_SIZE, "Syscall number to address map");
+
+        table.printRow("  Syscall Code", SYSCALL_CODE_START, SYSCALL_CODE_START + SYSCALL_CODE_SIZE - 1,
                 SYSCALL_CODE_SIZE, "Syscall implementations");
 
         int romUnused = BOOT_ROM_SIZE - (SYSCALL_TABLE_START - BOOT_ROM_START) - SYSCALL_TABLE_SIZE - SYSCALL_CODE_SIZE;
-        if (romUnused > 0) {
-            printMemoryRegion("  ROM Unused", SYSCALL_CODE_START + SYSCALL_CODE_SIZE,
-                    BOOT_ROM_START + BOOT_ROM_SIZE - 1, romUnused, "Available ROM space");
-        }
+        table.printRow("  ROM Unused", SYSCALL_CODE_START + SYSCALL_CODE_SIZE,
+                BOOT_ROM_START + BOOT_ROM_SIZE - 1, romUnused, "Available ROM space");
 
-        System.out.println("-".repeat(80));
+        table.printFooter();
 
-        // RAM Section
-        printMemoryRegion("RAM (Total)", RAM_START, RAM_START + RAM_SIZE - 1,
+        table.printRow("RAM (Total)", RAM_START, RAM_START + RAM_SIZE - 1,
                 RAM_SIZE, "Main system RAM");
-        printMemoryRegion("  Program Area", RAM_START, HEAP_START - 1,
+
+        table.printRow("  Program Area", RAM_START, HEAP_START - 1,
                 HEAP_START - RAM_START, "User program space");
-        printMemoryRegion("  Heap", HEAP_START, STACK_START,
+
+        table.printRow("  Heap", HEAP_START, STACK_START,
                 HEAP_SIZE, "Dynamic allocation");
-        printMemoryRegion("  Stack", STACK_START + 1, RAM_START + RAM_SIZE - 1,
+
+        table.printRow("  Stack", STACK_START + 1, RAM_START + RAM_SIZE - 1,
                 RAM_START + RAM_SIZE - STACK_START - 1, "Call stack (grows down)");
 
-        System.out.println("-".repeat(80));
+        table.printFooter();
 
-        // VRAM Section
-        printMemoryRegion("VRAM", VRAM_START, VRAM_START + VRAM_SIZE - 1,
+        table.printRow("VRAM", VRAM_START, VRAM_START + VRAM_SIZE - 1,
                 VRAM_SIZE, String.format("Video RAM %dx%d %s", VRAM_WIDTH, VRAM_HEIGHT, VRAM_FORMAT));
 
-        System.out.println("-".repeat(80));
+        table.printFooter();
 
-        // I/O Section
-        printMemoryRegion("I/O", IO_START, IO_START + IO_SIZE - 1,
+        table.printRow("I/O", IO_START, IO_START + IO_SIZE - 1,
                 IO_SIZE, "Memory-mapped I/O");
 
-        System.out.println("=".repeat(80));
-
-        // Summary
-        int totalMemory = BOOT_ROM_SIZE + RAM_SIZE + VRAM_SIZE + IO_SIZE;
-        System.out.println("MEMORY SUMMARY:");
-        System.out.printf("  Total Address Space: 0x%08X - 0x%08X (%s)\n",
-                0, IO_START + IO_SIZE - 1, formatSize(totalMemory));
-        System.out.printf("  ROM: %s | RAM: %s | VRAM: %s | I/O: %s\n",
-                formatSize(BOOT_ROM_SIZE), formatSize(RAM_SIZE),
-                formatSize(VRAM_SIZE), formatSize(IO_SIZE));
-
-        // Special addresses
-        System.out.println("\nSPECIAL ADDRESSES:");
-        System.out.printf("  Syscall Table:   0x%08X\n", SYSCALL_TABLE_START);
-        System.out.printf("  Stack Pointer:   0x%08X (initial)\n", STACK_START);
-        System.out.printf("  Heap Start:      0x%08X\n", HEAP_START);
-
-        // VRAM details
-        System.out.println("\nVRAM DETAILS:");
-        System.out.printf("  Resolution:      %dx%d pixels\n", VRAM_WIDTH, VRAM_HEIGHT);
-        System.out.printf("  Format:          %s (%d bytes/pixel)\n",
-                VRAM_FORMAT, bytesPerPixel(VRAM_FORMAT));
-        System.out.printf("  Total Pixels:    %,d\n", VRAM_WIDTH * VRAM_HEIGHT);
-
-        System.out.println("=".repeat(80));
-        System.out.println();
+        table.printDoubleFooter();
     }
 
-    private void printMemoryRegion(String name, int start, int end, int size, String description) {
-        System.out.printf("%-20s | 0x%08X | 0x%08X | %-10s | %s\n",
-                name, start, end, formatSize(size), description);
-    }
-
-    private String formatSize(int bytes) {
-        if (bytes >= 1024 * 1024) {
-            return String.format("%.1fMB", bytes / (1024.0 * 1024.0));
-        } else if (bytes >= 1024) {
-            return String.format("%.1fKB", bytes / 1024.0);
-        } else {
-            return bytes + "B";
-        }
-    }
 
     @Override
     public int getBootRomStart() {
@@ -230,7 +190,6 @@ public class NeptuneMemoryMap implements MemoryMap {
     private static int bytesPerPixel(VramFormat format) {
         return switch (format) {
             case RGBA32 -> 4;
-            // add other formats here if needed
             default -> throw new IllegalArgumentException("Unsupported VRAM format: " + format);
         };
     }

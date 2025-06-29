@@ -1,9 +1,9 @@
 package org.lpc;
 
-import javafx.animation.AnimationTimer;
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.geometry.Rectangle2D;
+import javafx.scene.Scene;
 import javafx.stage.Screen;
 import javafx.stage.Stage;
 import org.lpc.external.Assembler;
@@ -11,6 +11,9 @@ import org.lpc.instructions.InstructionSet;
 import org.lpc.instructions.NeptuneInstructionSet;
 import org.lpc.memory.MemoryMap;
 import org.lpc.memory.NeptuneMemoryMap;
+import org.lpc.memory.io.ConsoleOutputDevice;
+import org.lpc.memory.io.IODeviceManager;
+import org.lpc.memory.io.KeyboardInputDevice;
 import org.lpc.visualization.debug.CpuViewer;
 import org.lpc.visualization.debug.MemoryViewer;
 import org.lpc.visualization.vram.RGBA32Viewer;
@@ -19,9 +22,11 @@ import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Objects;
 
 public class Main extends Application {
     private CPU cpu;
+    private Scene ioScene;
 
     @Override
     public void start(Stage primaryStage) {
@@ -29,13 +34,21 @@ public class Main extends Application {
         loadBootRom();
         loadUserProgram();
         createAndShowViewers();
+        addIoDevices();
         startCpuExecutionThread();
+    }
+
+    private void addIoDevices() {
+        IODeviceManager io = cpu.getMemory().getIo();
+        io.register(new KeyboardInputDevice(io.getBaseAddress() + io.getCurrentOffset(), Objects.requireNonNull(ioScene)));
+        io.register(new ConsoleOutputDevice(io.getBaseAddress() + io.getCurrentOffset()));
+        io.printDevices();
     }
 
     private void initCpu() {
         MemoryMap memoryMap = new NeptuneMemoryMap();
         InstructionSet instructionSet = new NeptuneInstructionSet();
-        cpu = new CPU(instructionSet, memoryMap);
+        cpu = new CPU(instructionSet, memoryMap, 32);
     }
 
     private void loadBootRom() {
@@ -43,7 +56,7 @@ public class Main extends Application {
     }
 
     private void loadUserProgram() {
-        assembleAndLoadResource("/test.asm", cpu.getMemoryMap().getRamStart());
+        assembleAndLoadResource("/keyboard_input.asm", cpu.getMemoryMap().getRamStart());
     }
 
     private void assembleAndLoadResource(String resourcePath, int loadAddress) {
@@ -68,6 +81,8 @@ public class Main extends Application {
         cpuViewer.start(cpuStage);
         memoryViewer.start(memoryStage);
         vramViewer.start(vramStage);
+
+        ioScene = vramStage.getScene();
 
         arrangeStages(memoryStage, cpuStage);
     }

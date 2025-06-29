@@ -43,23 +43,29 @@ The Neptune Assembly Project is a comprehensive assembly language environment fe
 | SHR         | `rDest, shift` | Logical shift rDest right by shift bits          | Z, N, C       |
 
 ### Memory Instructions
-| Instruction | Format         | Description                                      | Flags Affected |
-|-------------|----------------|--------------------------------------------------|---------------|
-| LOAD        | `rDest, rAddr` | Load word from memory at rAddr                   | Z, N          |
-| STORE       | `rSrc, rAddr`  | Store word into memory at rAddr                  | None          |
+| Instruction | Format            | Description                                          | Flags Affected |
+|--------------|-------------------|------------------------------------------------------|----------------|
+| LOAD         | rDest, rAddr      | Load word from memory at rAddr                      | Z, N           |
+| LOADI        | rDest, address    | Load word from absolute memory address              | Z, N           |
+| STORE        | rSrc, rAddr       | Store word into memory at rAddr                     | None           |
+| STORI        | rSrc, address     | Store word into absolute memory address             | None           |
+
 
 ### Control Flow Instructions
-| Instruction | Format         | Description                                      | Flags Affected |
-|-------------|----------------|--------------------------------------------------|---------------|
-| JMP         | `address`      | Unconditional jump                               | None          |
-| JZ          | `address`      | Jump if zero flag set                            | None          |
-| JNZ         | `address`      | Jump if zero flag not set                        | None          |
-| JL          | `address`      | Jump if negative flag set                        | None          |
-| JG          | `address`      | Jump if not zero and not negative                | None          |
-| JN          | `address`      | Jump if negative flag set                        | None          |
-| JP          | `address`      | Jump if negative flag not set                    | None          |
-| CALL        | `address`      | Push PC and jump to address                      | None          |
-| RET         |                | Pop PC from stack and jump                       | None          |
+| Instruction | Format       | Description                                            | Flags Affected |
+|--------------|--------------|--------------------------------------------------------|----------------|
+| JMP          | address      | Unconditional jump                                    | None           |
+| JZ           | address      | Jump if zero flag set                                 | None           |
+| JE           | address      | Jump if equal (alias for JZ)                          | None           |
+| JNZ          | address      | Jump if zero flag not set                             | None           |
+| JNE          | address      | Jump if not equal (alias for JNZ)                     | None           |
+| JL           | address      | Jump if less (negative flag set)                      | None           |
+| JG           | address      | Jump if greater (not zero and not negative)           | None           |
+| JN           | address      | Jump if negative                                      | None           |
+| JP           | address      | Jump if positive (not negative)                       | None           |
+| CALL         | address      | Push PC to stack and jump to address                  | None           |
+| RET          |               | Pop PC from stack and jump                            | None           |
+
 
 ### Stack Instructions
 | Instruction | Format         | Description                                      | Flags Affected |
@@ -70,9 +76,12 @@ The Neptune Assembly Project is a comprehensive assembly language environment fe
 ### Data Movement Instructions
 | Instruction | Format         | Description                                      | Flags Affected |
 |-------------|----------------|--------------------------------------------------|---------------|
-| MOV         | `rDest, rSrc`  | Copy value from rSrc to rDest                    | Z, N          |
-| LOADI       | `rDest, imm`   | Load immediate into rDest                        | Z, N          |
-| CLR         | `rDest`        | Clear rDest (set to 0)                           | Z, N          |
+| Instruction | Format        | Description                                  | Flags Affected |
+|--------------|---------------|----------------------------------------------|----------------|
+| MOV          | rDest, rSrc   | Copy value from rSrc to rDest                | Z, N           |
+| MOVI         | rDest, imm    | Move immediate value into rDest              | Z, N           |
+| CLR          | rDest         | Clear rDest (set to 0)                       | Z, N           |
+
 
 ### Comparison Instructions
 | Instruction | Format         | Description                                      | Flags Affected |
@@ -88,7 +97,7 @@ The Neptune Assembly Project is a comprehensive assembly language environment fe
 | SYSCALL     |                | Execute system call specified by r0             | None          |
 | NOP         |                | No operation                                     | None          |
 | HLT         |                | Halt the CPU                                     | None          |
-| PRINT       | `rSrc`         | Print value in rSrc                              | None          |
+
 
 ### Flag Behavior
 | Flag | Name         | Description                                      |

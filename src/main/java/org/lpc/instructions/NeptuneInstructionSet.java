@@ -2,6 +2,8 @@ package org.lpc.instructions;
 
 import org.lpc.CPU;
 import org.lpc.memory.Memory;
+import org.lpc.memory.MemoryHandler;
+import org.lpc.memory.io.IODeviceManager;
 
 import java.util.Collections;
 import java.util.HashMap;
@@ -54,19 +56,35 @@ import java.util.function.Predicate;
  * =====================================================
  * LOAD  rDest, rAddr     - Load word from memory at rAddr into rDest, update flags
  * STORE rSrc, rAddr      - Store word from rSrc into memory at rAddr
+ * LOADI rDest, immA      - Load word from memory at imm into rDest, update flags
+ * STORI rSrc, imm        - Store word into memory at imm
+ * MSET  rAddr, rValue    - Set r1 words starting at rAddr to rValue
+ * MCPY  rDest, rSrc      - Copy r1 words from rSrc to rDest
  *
  * =====================================================
  * Control Flow Instructions:
  * =====================================================
- * JMP   address          - Jump to address unconditionally
- * JZ    address          - Jump to address if zero flag set
- * JNZ   address          - Jump to address if zero flag not set
- * JL    address          - Jump to address if negative flag set
- * JG    address          - Jump to address if zero flag not set and negative flag not set
- * JN    address          - Jump to address if negative flag set
- * JP    address          - Jump to address if negative flag not set
- * CALL  address          - Push PC, jump to address (2-word instruction)
- * RET                    - Pop PC from stack and jump
+ * JMP   address          - Jump unconditionally
+ * JZ    address          - Jump if zero flag is set (==)
+ * JE    address          - Jump if zero flag is set (==)
+ * JNZ   address          - Jump if zero flag is not set (!=)
+ * JN    address          - Jump if negative flag is set (signed < 0)
+ * JP    address          - Jump if negative flag is not set (signed >= 0)
+ *
+ * JG    address          - Jump if greater (signed >)     : zero flag not set AND negative flag not set
+ * JGE   address          - Jump if greater or equal (>=)  : negative flag not set
+ * JL    address          - Jump if less (signed <)        : negative flag set
+ * JLE   address          - Jump if less or equal (<=)     : negative flag set OR zero flag set
+ *
+ * JC    address          - Jump if carry flag is set (unsigned <)
+ * JNC   address          - Jump if carry flag is not set (unsigned >=)
+ * JA    address          - Jump if above (unsigned >)     : carry flag not set AND zero flag not set
+ * JAE   address          - Jump if above or equal (>=)    : carry flag not set
+ * JB    address          - Jump if below (unsigned <)     : carry flag set
+ * JBE   address          - Jump if below or equal (<=)    : carry flag set OR zero flag set
+ *
+ * CALL  address          - Push PC to stack, jump to address (2-word instruction)
+ * RET                    - Pop PC from stack and jump back
  *
  * =====================================================
  * Stack Instructions:
@@ -78,7 +96,7 @@ import java.util.function.Predicate;
  * Data Movement Instructions:
  * =====================================================
  * MOV   rDest, rSrc      - Copy value from rSrc into rDest, update flags
- * LOADI rDest, imm       - Load immediate imm into rDest, update flags (2-word instruction)
+ * MOVI  rDest, imm       - Load immediate imm into rDest, update flags (2-word instruction)
  * CLR   rDest            - Clear rDest (set to 0), update flags
  *
  * =====================================================
@@ -95,11 +113,6 @@ import java.util.function.Predicate;
  * SYSCALL               - Executes system call specified by r0:
  * NOP                   - No operation
  * HLT                   - Halt the CPU
- * PRINT rSrc            - Print the value in rSrc
- *
- * =====================================================
- * Register Convention:
- * r0-r15 - General purpose registers
  *
  * =====================================================
  * Immediate Values:
@@ -128,7 +141,7 @@ public class NeptuneInstructionSet implements InstructionSet {
 
     public NeptuneInstructionSet() {
         registerOpcodes();
-        logInstructions();
+        //logInstructions();
     }
 
     private void registerOpcodes() {
@@ -231,20 +244,107 @@ public class NeptuneInstructionSet implements InstructionSet {
     private void registerMemoryInstructions() {
         register("LOAD", createMemoryInstruction("LOAD", true));
         register("STORE", createMemoryInstruction("STORE", false));
+        // LOADI implementation
+        register("LOADI", new ImmediateInstruction("LOADI") {
+            @Override
+            protected void executeImmediate(CPU cpu, int rDest, int immediate) {
+                cpu.setRegister(rDest, immediate);
+                cpu.getFlags().update(immediate);  // Update flags based on the loaded value
+            }
+        });
+
+        // STOREI implementation
+        register("STORI", new ImmediateInstruction("STORI") {
+            @Override
+            protected void executeImmediate(CPU cpu, int rDest, int immediate) {
+                int value = cpu.getRegister(rDest);
+                cpu.getMemory().writeWord(immediate, value);
+            }
+        });
+
+        register("MSET", new Instruction() {
+            @Override
+            public void execute(CPU cpu, int[] words) {
+                int rAddr = InstructionUtils.extractRegister(words[0], 16);
+                int rValue = InstructionUtils.extractRegister(words[0], 8);
+                int addr = cpu.getRegister(rAddr);
+                int value = cpu.getRegister(rValue);
+                int count = cpu.getRegister(1); // r1 holds count
+
+                for (int i = 0; i < count; i++) {
+                    cpu.getMemory().writeWord(addr + i * 4, value);
+                }
+            }
+
+            @Override
+            public int[] encode(String args) {
+                var split = splitArgs(args, 2);
+                int rAddr = parseRegister(split[0]);
+                int rValue = parseRegister(split[1]);
+                return new int[]{encodeInstruction(rAddr, rValue, getOpcode("MSET"))};
+            }
+        });
+
+        register("MCPY", new Instruction() {
+            @Override
+            public void execute(CPU cpu, int[] words) {
+                int rDest = InstructionUtils.extractRegister(words[0], 16);
+                int rSrc = InstructionUtils.extractRegister(words[0], 8);
+                int destAddr = cpu.getRegister(rDest);
+                int srcAddr = cpu.getRegister(rSrc);
+                int count = cpu.getRegister(1); // r1 holds count
+
+                // Handle overlapping regions by copying backward if dest > src
+                if (destAddr > srcAddr && destAddr < srcAddr + count * 4) {
+                    for (int i = count - 1; i >= 0; i--) {
+                        int val = cpu.getMemory().readWord(srcAddr + i * 4);
+                        cpu.getMemory().writeWord(destAddr + i * 4, val);
+                    }
+                } else {
+                    for (int i = 0; i < count; i++) {
+                        int val = cpu.getMemory().readWord(srcAddr + i * 4);
+                        cpu.getMemory().writeWord(destAddr + i * 4, val);
+                    }
+                }
+            }
+
+            @Override
+            public int[] encode(String args) {
+                var split = splitArgs(args, 2);
+                int rDest = parseRegister(split[0]);
+                int rSrc = parseRegister(split[1]);
+                return new int[]{encodeInstruction(rDest, rSrc, getOpcode("MCPY"))};
+            }
+
+        });
     }
 
     private void registerControlFlowInstructions() {
         register("JMP", createJumpInstruction("JMP", cpu -> true));
+
         register("JZ", createJumpInstruction("JZ", cpu -> cpu.getFlags().isZero()));
+        register("JE", createJumpInstruction("JE", cpu -> cpu.getFlags().isZero()));
         register("JNZ", createJumpInstruction("JNZ", cpu -> !cpu.getFlags().isZero()));
+        register("JNE", createJumpInstruction("JNE", cpu -> !cpu.getFlags().isZero()));
+
         register("JN", createJumpInstruction("JN", cpu -> cpu.getFlags().isNegative()));
         register("JP", createJumpInstruction("JP", cpu -> !cpu.getFlags().isNegative()));
-        // After CMP a, b: jump if a > b (result is positive and not zero)
-        register("JG", createJumpInstruction("JG", cpu ->
-                !cpu.getFlags().isZero() && !cpu.getFlags().isNegative()));
-        // After CMP a, b: jump if a < b (result is negative)
-        register("JL", createJumpInstruction("JL", cpu ->
-                cpu.getFlags().isNegative()));
+
+        // Signed comparisons (after CMP a, b)
+        register("JG", createJumpInstruction("JG", cpu -> !cpu.getFlags().isZero() && !cpu.getFlags().isNegative())); // a > b
+        register("JGE", createJumpInstruction("JGE", cpu -> !cpu.getFlags().isNegative()));                           // a >= b
+        register("JL", createJumpInstruction("JL", cpu -> cpu.getFlags().isNegative()));                              // a < b
+        register("JLE", createJumpInstruction("JLE", cpu -> cpu.getFlags().isNegative() || cpu.getFlags().isZero()));  // a <= b
+
+        // Unsigned comparisons (if you support unsigned CMP or SUB with carry/borrow flag)
+        register("JC", createJumpInstruction("JC", cpu -> cpu.getFlags().isCarry()));       // Jump if carry (unsigned <)
+        register("JNC", createJumpInstruction("JNC", cpu -> !cpu.getFlags().isCarry()));    // Jump if not carry (unsigned >=)
+
+        register("JA", createJumpInstruction("JA", cpu -> !cpu.getFlags().isCarry() && !cpu.getFlags().isZero())); // unsigned >
+        register("JAE", createJumpInstruction("JAE", cpu -> !cpu.getFlags().isCarry()));                         // unsigned >=
+
+        register("JB", createJumpInstruction("JB", cpu -> cpu.getFlags().isCarry()));                             // unsigned <
+        register("JBE", createJumpInstruction("JBE", cpu -> cpu.getFlags().isCarry() || cpu.getFlags().isZero())); // unsigned <=
 
 
         register("CALL", new Instruction() {
@@ -297,7 +397,7 @@ public class NeptuneInstructionSet implements InstructionSet {
     }
 
     private void registerDataMovementInstructions() {
-        register("LOADI", new ImmediateInstruction("LOADI") {
+        register("MOVI", new ImmediateInstruction("MOVI") {
             @Override
             protected void executeImmediate(CPU cpu, int rDest, int immediate) {
                 cpu.setRegister(rDest, immediate);
@@ -396,12 +496,7 @@ public class NeptuneInstructionSet implements InstructionSet {
             public void execute(CPU cpu, int[] words) {
                 int syscallNumber = cpu.getRegister(0);
 
-                if (syscallNumber == 100) {
-                    System.out.println("PRINT: "+cpu.getRegister(1));
-                    return;
-                }
-
-                // For all other syscalls, use the ROM syscall table
+                // use the ROM syscall table
                 int syscallTableAddr = cpu.getMemoryMap().getSyscallTableStart();
                 Memory rom = cpu.getMemory().getRom();
 
@@ -427,7 +522,7 @@ public class NeptuneInstructionSet implements InstructionSet {
                 }
 
                 // Determine which memory region contains the target address
-                Memory targetMemory = resolveMemoryForAddress(cpu, targetAddress);
+                MemoryHandler targetMemory = resolveMemoryForAddress(cpu, targetAddress);
                 if (targetMemory == null) {
                     throw new IllegalStateException("Syscall " + syscallNumber + " target address 0x" +
                             Integer.toHexString(targetAddress) + " is not in any valid memory region");
@@ -441,22 +536,16 @@ public class NeptuneInstructionSet implements InstructionSet {
                 cpu.setProgramCounter(targetAddress);
             }
 
-            /**
-             * Helper method to check if an address is within a memory region's bounds
-             */
-            private boolean isAddressInMemory(int address, Memory memory) {
+            private boolean isAddressInMemory(int address, MemoryHandler memory) {
                 return address >= memory.getBaseAddress() &&
                         address < memory.getBaseAddress() + memory.getSize();
             }
 
-            /**
-             * Helper method to resolve which memory region contains the given address
-             */
-            private Memory resolveMemoryForAddress(CPU cpu, int address) {
+            private MemoryHandler resolveMemoryForAddress(CPU cpu, int address) {
                 Memory rom = cpu.getMemory().getRom();
                 Memory ram = cpu.getMemory().getRam();
                 Memory vram = cpu.getMemory().getVram();
-                Memory io = cpu.getMemory().getIo();
+                IODeviceManager io = cpu.getMemory().getIo();
 
                 if (isAddressInMemory(address, rom)) return rom;
                 if (isAddressInMemory(address, ram)) return ram;
@@ -488,22 +577,6 @@ public class NeptuneInstructionSet implements InstructionSet {
             @Override
             public int[] encode(String args) {
                 return new int[]{encodeInstruction(0, 0, getOpcode("HLT"))};
-            }
-        });
-
-        register("PRINT", new Instruction() {
-            @Override
-            public void execute(CPU cpu, int[] words) {
-                int register = InstructionUtils.extractRegister(words[0], 16);
-                int value = cpu.getRegister(register);
-                System.out.println("[CPU] Register " + register + " value: " + value);
-            }
-
-            @Override
-            public int[] encode(String args) {
-                String[] parts = splitArgs(args, 1);
-                int register = parseRegister(parts[0]);
-                return new int[]{encodeInstruction(register, 0, getOpcode("PRINT"))};
             }
         });
     }
@@ -755,11 +828,6 @@ public class NeptuneInstructionSet implements InstructionSet {
     @Override
     public String getName(Byte opcode) {
         return opcodeToName.get(opcode);
-    }
-
-    @Override
-    public Set<String> getInstructionNames() {
-        return Collections.unmodifiableSet(nameToOpcode.keySet());
     }
 
     private byte decodeOpcode(int instructionWord) {

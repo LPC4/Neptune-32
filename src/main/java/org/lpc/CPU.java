@@ -8,11 +8,12 @@ import org.lpc.instructions.InstructionUtils;
 import org.lpc.memory.Flags;
 import org.lpc.memory.MemoryBus;
 import org.lpc.memory.MemoryMap;
+import org.lpc.memory.io.KeyboardInputDevice;
 
 @Getter
 @Setter
 public class CPU {
-    private final int[] registers = new int[16];
+    private final int[] registers;
 
     private int programCounter;
     private int stackPointer;
@@ -24,12 +25,13 @@ public class CPU {
     private final MemoryMap memoryMap;
     private final InstructionSet instructionSet;
 
-    public CPU(InstructionSet instructionSet, MemoryMap memoryMap) {
+    public CPU(InstructionSet instructionSet, MemoryMap memoryMap, int registers) {
         this.instructionSet = instructionSet;
         this.memoryMap = memoryMap;
         this.flags = new Flags();
         this.memory = new MemoryBus(memoryMap);
         this.halt = false;
+        this.registers = new int[registers];
 
         this.programCounter = memoryMap.getProgramStart();
         this.stackPointer = memoryMap.getStackStart();

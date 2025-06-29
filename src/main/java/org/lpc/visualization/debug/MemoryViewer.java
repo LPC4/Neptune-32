@@ -117,7 +117,7 @@ public class MemoryViewer {
         AnimationTimer refreshTimer = new AnimationTimer() {
             @Override
             public void handle(long now) {
-                if (now - lastUpdate >= 200_000_000) {
+                if (now - lastUpdate >= 20_000_000) {
                     refreshTable();
                     lastUpdate = now;
                 }
@@ -160,6 +160,7 @@ public class MemoryViewer {
         bytesCol.setStyle("-fx-font-weight: bold; -fx-font-family: 'Segoe UI';");
         instrCol.setStyle("-fx-font-weight: bold; -fx-font-family: 'Segoe UI';");
 
+        //noinspection unchecked
         tableView.getColumns().addAll(addrCol, bytesCol, instrCol);
 
         tableView.setRowFactory(tv -> {
@@ -172,7 +173,7 @@ public class MemoryViewer {
                     int memAddr = Integer.parseInt(addr, 16);
                     int pc = cpu.getProgramCounter();
 
-                    if (memAddr == pc) {
+                    if (memAddr == pc) { // set yellow
                         row.setStyle("-fx-background-color: #fff3cd; -fx-font-family: 'Consolas'; " +
                                 "-fx-font-size: 11px; -fx-font-weight: bold;");
                     } else if (memAddr >= pc && memAddr < pc + 16) {
@@ -257,7 +258,8 @@ public class MemoryViewer {
             int word = 0;
             try {
                 word = memory.readWord(addr);
-            } catch (IllegalArgumentException ignored) {
+            } catch (IllegalArgumentException e) {
+                System.out.println("invalid read");
             }
             byte opcode = (byte) (word & 0xFF);
             String instrName = instructionSet.getName(opcode);
@@ -312,6 +314,7 @@ public class MemoryViewer {
                 refreshTable();
             }
         });
+        sectionSelector.getSelectionModel().select(1); // start in ram section
 
         // Compact navigation buttons
         Button prevButton = createCompactButton("⬅ Prev");

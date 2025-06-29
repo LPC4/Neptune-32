@@ -10,6 +10,4 @@ public interface InstructionSet {
     Byte getOpcode(String name);
 
     String getName(Byte opcode);
-
-    Set<String> getInstructionNames();
 }
