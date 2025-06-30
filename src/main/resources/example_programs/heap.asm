@@ -1,3 +1,5 @@
+.const COUT 0x00112010
+
 main:
 ; ---------------------------------
 ; Get heap info (optional)
@@ -33,25 +35,25 @@ MOV r12, r4
 ; Print byte 1
 MOV r13, r12
 ANDI r13, 0xFF
-STORI r13, 0x32010
+STORI r13, COUT
 
 ; Print byte 2
 SHR r12, 8
 MOV r13, r12
 ANDI r13, 0xFF
-STORI r13, 0x32010
+STORI r13, COUT
 
 ; Print byte 3
 SHR r12, 8
 MOV r13, r12
 ANDI r13, 0xFF
-STORI r13, 0x32010
+STORI r13, COUT
 
 ; Print byte 4
 SHR r12, 8
 MOV r13, r12
 ANDI r13, 0xFF
-STORI r13, 0x32010
+STORI r13, COUT
 
 ; ---------------------------------
 ; Read back and print 'BBBB'
@@ -61,25 +63,25 @@ MOV r12, r4
 ; Print byte 1
 MOV r13, r12
 ANDI r13, 0xFF
-STORI r13, 0x32010
+STORI r13, COUT
 
 ; Print byte 2
 SHR r12, 8
 MOV r13, r12
 ANDI r13, 0xFF
-STORI r13, 0x32010
+STORI r13, COUT
 
 ; Print byte 3
 SHR r12, 8
 MOV r13, r12
 ANDI r13, 0xFF
-STORI r13, 0x32010
+STORI r13, COUT
 
 ; Print byte 4
 SHR r12, 8
 MOV r13, r12
 ANDI r13, 0xFF
-STORI r13, 0x32010
+STORI r13, COUT
 
 ; Free the memory
 MOVI r0, 6

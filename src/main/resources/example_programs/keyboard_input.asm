@@ -1,5 +1,5 @@
-.const KEYBOARD_BASE 0x32000
-.const CONSOLE_OUT 0x32010
+.const KEYBOARD_BASE 0x00112000
+.const CONSOLE_OUT 0x00112010
 
 .const FIRST_CHAR 0x00
 .const NOT_LAST_CHAR 0x04
@@ -85,4 +85,4 @@ skip_pixel:
     JMP process_buffer
 
 restart:
-    JMP main
+    JMP .main

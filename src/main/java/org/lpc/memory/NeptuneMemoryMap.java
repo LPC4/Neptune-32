@@ -15,7 +15,7 @@ public class NeptuneMemoryMap implements MemoryMap {
     private static final int SYSCALL_CODE_SIZE = 2 * 1024;                        // 2 KB for syscall implementations
 
     private static final int RAM_START = BOOT_ROM_START + BOOT_ROM_SIZE;
-    private static final int RAM_SIZE = 128 * 1024;                            // 128 KB
+    private static final int RAM_SIZE = 1024 * 1024;                            // 1 MB
 
     private static final int VRAM_WIDTH = 128;
     private static final int VRAM_HEIGHT = 128;
@@ -28,7 +28,7 @@ public class NeptuneMemoryMap implements MemoryMap {
     private static final int IO_SIZE = 4 * 1024;                              // 4 KB
 
     private static final int STACK_START = RAM_START + RAM_SIZE - 4;
-    private static final int HEAP_START = RAM_START + (8 * 1024);             // 8 KB into RAM
+    private static final int HEAP_START = RAM_START + (512 * 1024);             // 512 KB into RAM
     private static final int HEAP_SIZE = STACK_START - HEAP_START;
 
     public NeptuneMemoryMap() {

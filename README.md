@@ -29,23 +29,17 @@ Neptune is a custom-built 32-bit CPU emulator with an integrated assembler and a
 
 | Region          | Address Range           | Size   | Description                               |
 | --------------- | ----------------------- | ------ | ----------------------------------------- |
-| ROM             | 0x00000000 - 0x00001FFF | 8 KB   | Boot ROM (contains syscall table & code)  |
-| - Syscall Table | 0x00000010 - 0x0000010F | 256 B  | Maps 64 syscalls to handler addresses (4 bytes each) |
+| ROM             | 0x00000000 - 0x00001FFF | 8 KB   | Boot ROM (syscalls, bootloader)           |
+| - Boot Code     | 0x00000000 - 0x0000000F | 16 B   | Bootloader code                           |
+| - Syscall Table | 0x00000010 - 0x0000010F | 256 B  | Maps syscall numbers to handler addresses |
 | - Syscall Code  | 0x00000110 - 0x0000090F | 2 KB   | Syscall handler implementations           |
-| RAM             | 0x00002000 - 0x00021FFF | 128 KB | Main RAM for programs                     |
-| - Heap          | 0x00004000 - dynamic    | ~      | Grows upwards from 8KB into RAM          |
-| - Stack         | 0x00021FFC - downwards  | ~      | Grows downwards from end of RAM           |
-| VRAM            | 0x00022000 - 0x00031FFF | 64 KB  | 128x128 RGBA32 framebuffer                |
-| IO              | 0x00032000 - 0x00032FFF | 4 KB   | Memory-mapped input/output devices        |
-
-### Memory Details
-
-* **ROM Start:** 0x00000000 (8 KB total)
-* **RAM Start:** 0x00002000 (128 KB total)
-* **Heap Start:** 0x00004000 (8 KB into RAM)
-* **Stack Start:** 0x00021FFC (grows downward from end of RAM)
-* **VRAM Start:** 0x00022000 (64 KB total)
-* **IO Start:** 0x00032000 (4 KB total)
+| - ROM Free      | 0x00000910 - 0x00001FFF | 5.7 KB | Available ROM space for extensions        |
+| RAM             | 0x00002000 - 0x00101FFF | 1 MB   | Main system RAM                           |
+| - Program Area  | 0x00002000 - 0x00081FFF | 512 KB | User program space                        |
+| - Heap          | 0x00082000 - 0x00101FFC | 512 KB | Dynamic memory (grows upwards)            |
+| - Stack         | 0x00101FFD - 0x00101FFF | 3 B    | Call stack (grows down from top of RAM)   |
+| VRAM            | 0x00102000 - 0x00111FFF | 64 KB  | Video RAM (128x128 RGBA32 framebuffer)    |
+| IO              | 0x00112000 - 0x00112FFF | 4 KB   | Memory-mapped input/output devices        |
 
 ### Notes
 
@@ -327,7 +321,7 @@ Each pixel is stored as 4 consecutive bytes:
 
 ## License
 
-MIT License or a license of your choosing.
+MIT License.
 
 ---
 

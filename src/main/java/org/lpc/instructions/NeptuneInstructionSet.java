@@ -130,10 +130,6 @@ import org.lpc.instructions.InstructionUtils;
  * - Overflow flag (V): Set when arithmetic overflow occurs
  * - Carry flag (C): Set when carry occurs
  *
- * =====================================================
- * Memory Access:
- * - All memory operations use word (32-bit) addressing
- * - Memory is byte-addressable but accessed in words
  */
 
 public class NeptuneInstructionSet implements InstructionSet {

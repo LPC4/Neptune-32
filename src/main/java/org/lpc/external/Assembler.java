@@ -17,6 +17,7 @@ public class Assembler {
     private final SyscallManager syscallManager;
     private final MemoryResolver memoryResolver;
     private final MacroManager macroManager;
+    private final DataSectionManager dataSectionManager;
 
     public Assembler(CPU cpu) {
         this.cpu = cpu;
@@ -25,17 +26,30 @@ public class Assembler {
         this.syscallManager = new SyscallManager(cpu);
         this.memoryResolver = new MemoryResolver(cpu);
         this.macroManager = new MacroManager();
+        this.dataSectionManager = new DataSectionManager(cpu);
     }
 
     public void assembleAndLoad(List<String> lines, int baseAddress) {
         labelManager.clear();
         syscallManager.clear();
         macroManager.clear();
+        dataSectionManager.clear();
 
         var expanded = macroManager.expandMacros(lines);
-        var parsed = parseSourceLines(expanded, baseAddress);
+        var sections = dataSectionManager.parseSections(expanded);
 
-        handleProgramStart(baseAddress);
+        // Process data section first to determine final program start address
+        int programStartAddress = baseAddress;
+        if (sections.dataSection() != null) {
+            dataSectionManager.processDataSection(sections.dataSection(), labelManager);
+            // Calculate program start after data + 4-word gap
+            programStartAddress = dataSectionManager.getNextAvailableAddress() + 16; // 4 words * 4 bytes
+        }
+
+        var parsed = parseSourceLines(sections.codeSection(), programStartAddress);
+
+        writeDataToMemory();
+        handleProgramStart(programStartAddress);
         writeInstructionsToMemory(parsed);
         syscallManager.finalizeSyscallTable(labelManager);
     }
@@ -93,13 +107,18 @@ public class Assembler {
         return new InstructionInfo(mnemonic, args, instr);
     }
 
-    private void handleProgramStart(int baseAddress) {
-        if (memoryResolver.isRamAddress(baseAddress)) {
-            if (!labelManager.containsLabel("main")) {
-                throw new IllegalArgumentException("Program must contain a main label");
+    private void handleProgramStart(int programStartAddress) {
+        if (memoryResolver.isRamAddress(programStartAddress)) {
+            if (labelManager.containsLabel("main")) {
+                cpu.setProgramCounter(labelManager.getAddress("main"));
+            } else {
+                cpu.setProgramCounter(programStartAddress);
             }
-            cpu.setProgramCounter(labelManager.getAddress("main"));
         }
+    }
+
+    private void writeDataToMemory() {
+        dataSectionManager.writeToMemory(memoryResolver);
     }
 
     private void writeInstructionsToMemory(List<SourceLine> parsedLines) {
@@ -375,4 +394,349 @@ class MacroManager {
         }
         return line;
     }
+}
+
+class DataSectionManager {
+    private final CPU cpu;
+    private final List<DataItem> dataItems = new ArrayList<>();
+    private int currentDataAddress;
+
+    public DataSectionManager(CPU cpu) {
+        this.cpu = cpu;
+        this.currentDataAddress = cpu.getMemoryMap().getRamStart();
+    }
+
+    public void clear() {
+        dataItems.clear();
+        currentDataAddress = cpu.getMemoryMap().getRamStart();
+    }
+
+    public int getNextAvailableAddress() {
+        return currentDataAddress;
+    }
+
+    public SectionInfo parseSections(List<String> lines) {
+        List<String> dataLines = new ArrayList<>();
+        List<String> codeLines = new ArrayList<>();
+        boolean inDataSection = false;
+        boolean hasStartDirective = false;
+
+        for (String line : lines) {
+            String trimmed = line.trim();
+
+            if (trimmed.equalsIgnoreCase(".data")) {
+                inDataSection = true;
+                continue;
+            } else if (trimmed.equalsIgnoreCase(".code")) {
+                inDataSection = false;
+                hasStartDirective = true;
+                continue;
+            }
+
+            if (inDataSection) {
+                if (!trimmed.isEmpty() && !trimmed.startsWith(";") && !trimmed.startsWith("#")) {
+                    dataLines.add(line);
+                }
+            } else {
+                codeLines.add(line);
+            }
+        }
+
+        return new SectionInfo(
+                dataLines.isEmpty() ? null : dataLines,
+                codeLines,
+                hasStartDirective
+        );
+    }
+
+    public void processDataSection(List<String> dataLines, LabelManager labelManager) {
+        for (String line : dataLines) {
+            processDataDeclaration(line.trim(), labelManager);
+        }
+    }
+
+    private void processDataDeclaration(String line, LabelManager labelManager) {
+        // Handle different data declaration formats
+        if (line.toLowerCase().startsWith("string ")) {
+            processStringDeclaration(line, labelManager);
+        } else if (line.toLowerCase().startsWith("int ") ||
+                line.toLowerCase().startsWith("word ")) {
+            processIntDeclaration(line, labelManager);
+        } else if (line.toLowerCase().startsWith("byte ")) {
+            processByteDeclaration(line, labelManager);
+        } else if (line.toLowerCase().startsWith("array ")) {
+            processArrayDeclaration(line, labelManager);
+        } else if (line.toLowerCase().startsWith("buffer ")) {
+            processBufferDeclaration(line, labelManager);
+        } else {
+            throw new IllegalArgumentException("Unknown data declaration: " + line);
+        }
+    }
+
+    private void processStringDeclaration(String line, LabelManager labelManager) {
+        // Format: String name = "value"
+        String[] parts = line.split("=", 2);
+        if (parts.length != 2) {
+            throw new IllegalArgumentException("Invalid string declaration: " + line);
+        }
+
+        String name = parts[0].substring(6).trim(); // Remove "string"
+        String valueStr = parts[1].trim();
+
+        if (!valueStr.startsWith("\"") || !valueStr.endsWith("\"")) {
+            throw new IllegalArgumentException("String value must be quoted: " + line);
+        }
+
+        String value = valueStr.substring(1, valueStr.length() - 1);
+        value = unescapeString(value); // Handle escape sequences
+
+        // Add null terminator
+        byte[] bytes = (value + "\0").getBytes();
+
+        labelManager.addLabel(name, currentDataAddress);
+        dataItems.add(new StringDataItem(currentDataAddress, name, bytes));
+
+        // Align to word boundary
+        currentDataAddress += alignToWord(bytes.length);
+    }
+
+    private void processIntDeclaration(String line, LabelManager labelManager) {
+        // Format: Int name = value  or  Word name = value
+        String[] parts = line.split("=", 2);
+        if (parts.length != 2) {
+            throw new IllegalArgumentException("Invalid integer declaration: " + line);
+        }
+
+        String name = parts[0].split("\\s+")[1].trim();
+        String valueStr = parts[1].trim();
+
+        int value = parseValue(valueStr, labelManager);
+
+        labelManager.addLabel(name, currentDataAddress);
+        dataItems.add(new IntDataItem(currentDataAddress, name, value));
+        currentDataAddress += 4; // 32-bit word
+    }
+
+    private void processByteDeclaration(String line, LabelManager labelManager) {
+        // Format: Byte name = value
+        String[] parts = line.split("=", 2);
+        if (parts.length != 2) {
+            throw new IllegalArgumentException("Invalid byte declaration: " + line);
+        }
+
+        String name = parts[0].substring(4).trim();
+        String valueStr = parts[1].trim();
+
+        int value = parseValue(valueStr, labelManager);
+        if (value < -128 || value > 255) {
+            throw new IllegalArgumentException("Byte value out of range: " + value);
+        }
+
+        labelManager.addLabel(name, currentDataAddress);
+        dataItems.add(new ByteDataItem(currentDataAddress, name, (byte)value));
+        currentDataAddress += alignToWord(1); // Align to word boundary
+    }
+
+    private void processArrayDeclaration(String line, LabelManager labelManager) {
+        // Format: Array name[size] = val1, val2, ... or Array name[size]
+        String name;
+        int size;
+        List<Integer> values = new ArrayList<>();
+
+        if (line.contains("=")) {
+            String[] parts = line.split("=", 2);
+            String leftPart = parts[0].substring(5).trim(); // Remove "array"
+            String valuesPart = parts[1].trim();
+
+            // Parse name[size]
+            int bracketStart = leftPart.indexOf('[');
+            int bracketEnd = leftPart.indexOf(']');
+            if (bracketStart == -1 || bracketEnd == -1) {
+                throw new IllegalArgumentException("Invalid array declaration: " + line);
+            }
+
+            name = leftPart.substring(0, bracketStart).trim();
+            size = Integer.parseInt(leftPart.substring(bracketStart + 1, bracketEnd).trim());
+
+            // Parse values val1, val2, ... (without curly braces)
+            if (!valuesPart.trim().isEmpty()) {
+                for (String val : valuesPart.split(",")) {
+                    values.add(parseValue(val.trim(), labelManager));
+                }
+            }
+        } else {
+            // Format: Array name[size] (uninitialized)
+            String leftPart = line.substring(5).trim();
+            int bracketStart = leftPart.indexOf('[');
+            int bracketEnd = leftPart.indexOf(']');
+
+            name = leftPart.substring(0, bracketStart).trim();
+            size = Integer.parseInt(leftPart.substring(bracketStart + 1, bracketEnd).trim());
+        }
+
+        // Pad with zeros if needed
+        while (values.size() < size) {
+            values.add(0);
+        }
+
+        if (values.size() > size) {
+            throw new IllegalArgumentException("Too many initializers for array " + name);
+        }
+
+        labelManager.addLabel(name, currentDataAddress);
+        dataItems.add(new ArrayDataItem(currentDataAddress, name, values));
+        currentDataAddress += size * 4; // Each element is 4 bytes
+    }
+
+    private void processBufferDeclaration(String line, LabelManager labelManager) {
+        // Format: Buffer name[size] - allocates uninitialized space
+        String leftPart = line.substring(6).trim(); // Remove "buffer"
+        int bracketStart = leftPart.indexOf('[');
+        int bracketEnd = leftPart.indexOf(']');
+
+        if (bracketStart == -1 || bracketEnd == -1) {
+            throw new IllegalArgumentException("Invalid buffer declaration: " + line);
+        }
+
+        String name = leftPart.substring(0, bracketStart).trim();
+        int size = Integer.parseInt(leftPart.substring(bracketStart + 1, bracketEnd).trim());
+
+        labelManager.addLabel(name, currentDataAddress);
+        dataItems.add(new BufferDataItem(currentDataAddress, name, size));
+        currentDataAddress += alignToWord(size);
+    }
+
+    public void writeToMemory(MemoryResolver memoryResolver) {
+        for (DataItem item : dataItems) {
+            item.writeToMemory(memoryResolver);
+        }
+    }
+
+    private String unescapeString(String str) {
+        return str.replace("\\n", "\n")
+                .replace("\\t", "\t")
+                .replace("\\r", "\r")
+                .replace("\\\\", "\\")
+                .replace("\\\"", "\"")
+                .replace("\\0", "\0");
+    }
+
+    private int parseValue(String valueStr, LabelManager labelManager) {
+        valueStr = valueStr.trim();
+
+        // Check if it's a label/constant reference
+        if (labelManager.containsLabel(valueStr)) {
+            return labelManager.getAddress(valueStr);
+        }
+
+        // Parse numeric value
+        if (valueStr.startsWith("0x") || valueStr.startsWith("0X")) {
+            return Integer.parseUnsignedInt(valueStr.substring(2), 16);
+        } else if (valueStr.startsWith("0b") || valueStr.startsWith("0B")) {
+            return Integer.parseUnsignedInt(valueStr.substring(2), 2);
+        } else {
+            return Integer.parseInt(valueStr);
+        }
+    }
+
+    private int alignToWord(int size) {
+        return (size + 3) & ~3; // Round up to multiple of 4
+    }
+
+    // Data item classes
+    private abstract static class DataItem {
+        protected final int address;
+        protected final String name;
+
+        public DataItem(int address, String name) {
+            this.address = address;
+            this.name = name;
+        }
+
+        public abstract void writeToMemory(MemoryResolver resolver);
+    }
+
+    private static class StringDataItem extends DataItem {
+        private final byte[] data;
+
+        public StringDataItem(int address, String name, byte[] data) {
+            super(address, name);
+            this.data = data;
+        }
+
+        @Override
+        public void writeToMemory(MemoryResolver resolver) {
+            MemoryHandler mem = resolver.resolve(address);
+            for (int i = 0; i < data.length; i++) {
+                mem.writeByte(address + i, data[i]);
+            }
+        }
+    }
+
+    private static class IntDataItem extends DataItem {
+        private final int value;
+
+        public IntDataItem(int address, String name, int value) {
+            super(address, name);
+            this.value = value;
+        }
+
+        @Override
+        public void writeToMemory(MemoryResolver resolver) {
+            MemoryHandler mem = resolver.resolve(address);
+            mem.writeWord(address, value);
+        }
+    }
+
+    private static class ByteDataItem extends DataItem {
+        private final byte value;
+
+        public ByteDataItem(int address, String name, byte value) {
+            super(address, name);
+            this.value = value;
+        }
+
+        @Override
+        public void writeToMemory(MemoryResolver resolver) {
+            MemoryHandler mem = resolver.resolve(address);
+            mem.writeByte(address, value);
+        }
+    }
+
+    private static class ArrayDataItem extends DataItem {
+        private final List<Integer> values;
+
+        public ArrayDataItem(int address, String name, List<Integer> values) {
+            super(address, name);
+            this.values = values;
+        }
+
+        @Override
+        public void writeToMemory(MemoryResolver resolver) {
+            MemoryHandler mem = resolver.resolve(address);
+            for (int i = 0; i < values.size(); i++) {
+                mem.writeWord(address + i * 4, values.get(i));
+            }
+        }
+    }
+
+    private static class BufferDataItem extends DataItem {
+        private final int size;
+
+        public BufferDataItem(int address, String name, int size) {
+            super(address, name);
+            this.size = size;
+        }
+
+        @Override
+        public void writeToMemory(MemoryResolver resolver) {
+            MemoryHandler mem = resolver.resolve(address);
+            // Initialize buffer to zeros
+            for (int i = 0; i < size; i++) {
+                mem.writeByte(address + i, (byte)0);
+            }
+        }
+    }
+
+    public record SectionInfo(List<String> dataSection, List<String> codeSection, boolean hasStartDirective) {}
 }

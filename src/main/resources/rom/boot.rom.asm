@@ -1,4 +1,11 @@
 ; =============================================================================
+; VRAM Constants
+; =============================================================================
+.const VRAM_BASE 0x102000
+.const VRAM_SIZE 65536
+.const VRAM_WIDTH 128
+.const VRAM_HEIGHT 128
+; =============================================================================
 ; SYSCALL: set_pixel_RGBA32 (ID: 0)
 ; =============================================================================
 ; Description:
@@ -115,10 +122,10 @@ syscall 0 set_pixel_RGBA32:
 ;   MOV r15, r1         ; save VRAM base for other syscalls
 ; =============================================================================
 syscall 1 get_neptune_vram_info:
-    MOVI r1, 139264     ; VRAM base address (0x22000)
-    MOVI r2, 65536      ; VRAM size: 128 × 128 × 4 bytes
-    MOVI r3, 128        ; screen width in pixels
-    MOVI r4, 128        ; screen height in pixels
+    MOVI r1, VRAM_BASE   ; VRAM base address
+    MOVI r2, VRAM_SIZE   ; VRAM size: 128 × 128 × 4 bytes
+    MOVI r3, VRAM_WIDTH  ; screen width in pixels
+    MOVI r4, VRAM_HEIGHT ; screen height in pixels
     RET
 
 
@@ -434,15 +441,15 @@ syscall 4 draw_line_RGBA32:
 ; =============================================================================
 ; Memory Management Constants
 ; =============================================================================
-.const HEAP_START          0x4000      ; Start of heap area
-.const HEAP_END            0x21FFC     ; End of heap area (before stack)
-.const HEAP_SIZE           0x1DFFC     ; Total heap size (122876 bytes)
+.const HEAP_START          0x00082000      ; Start of heap area
+.const HEAP_END            0x00101FFC      ; End of heap area (just before stack)
+.const HEAP_SIZE           0x0007DFFC      ; Total heap size (512 KB - 4 bytes for stack)
 
 ; Global variables (stored at start of heap)
-.const heap_initialized    0x4000      ; 1 byte: 0=uninitialized, 1=initialized
-.const free_list_head      0x4001      ; 4 bytes: pointer to first free block
-.const current_bump_ptr    0x4005      ; 4 bytes: current position for bump allocation
-.const heap_data_start     0x4009      ; Start of actual allocatable memory
+.const heap_initialized    0x82000      ; 1 byte: 0=uninitialized, 1=initialized
+.const free_list_head      0x82001      ; 4 bytes: pointer to first free block
+.const current_bump_ptr    0x82005      ; 4 bytes: current position for bump allocation
+.const heap_data_start     0x82009      ; Start of actual allocatable memory
 
 ; Free block structure (stored in freed memory):
 ; +0: next_ptr (4 bytes) - pointer to next free block
@@ -679,30 +686,3 @@ syscall 7 get_heap_info:
     LOADI r4, free_list_head
 
     RET
-
-
-; =============================================================================
-; Example Usage:
-; =============================================================================
-;
-; ; Allocate 64 bytes
-; MOVI r0, 5          ; malloc syscall
-; MOVI r1, 64         ; size
-; SYSCALL
-; MOV r10, r1         ; save pointer in r10
-;
-; ; Use the memory...
-; MOVI r2, 0x12345678
-; STORE r2, r10       ; write to allocated memory
-;
-; ; Free the memory
-; MOVI r0, 6          ; free syscall
-; MOV r1, r10         ; pointer to free
-; MOVI r2, 64         ; original size
-; SYSCALL
-;
-; ; Get heap status
-; MOVI r0, 7          ; get_heap_info syscall
-; SYSCALL
-; ; r1=heap_start, r2=heap_end, r3=bump_ptr, r4=free_head
-; =============================================================================

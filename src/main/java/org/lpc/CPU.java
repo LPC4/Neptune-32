@@ -54,7 +54,18 @@ public class CPU {
 
     public void setRegister(int index, int value) {
         validateRegisterIndex(index);
-        registers[index] = value;
+        switch (index) {
+            case 252 -> programCounter = value;
+            case 253 -> stackPointer = value;
+            case 254 -> heapPointer = value;
+            default -> {
+                if (index >= 0 && index < registers.length) {
+                    registers[index] = value;
+                } else {
+                    throw new IllegalArgumentException("Wrong register index: " + index);
+                }
+            }
+        };
     }
 
     private void validateRegisterIndex(int index) {

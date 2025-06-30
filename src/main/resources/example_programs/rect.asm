@@ -45,4 +45,4 @@ main:
     MOVI r0, 4
     SYSCALL
 
-    JMP main
+    JMP .main
